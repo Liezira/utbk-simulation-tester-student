@@ -189,8 +189,8 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Test UTBK SNBT</h1>
-          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Aman</p>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
+          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Online</p>
 
           {/* DISCLAIMER BOX */}
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6 text-left text-xs text-yellow-800">
