@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, AlertTriangle, Lock, WifiOff, ZapOff, Copyright, ShieldAlert } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, AlertTriangle, Lock, WifiOff, ZapOff, Copyright, ShieldAlert, Timer } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
@@ -28,6 +28,7 @@ const UTBKStudentApp = () => {
   const [questionOrder, setQuestionOrder] = useState({});
   const [breakTime, setBreakTime] = useState(10); 
   const [bankSoal, setBankSoal] = useState({});
+  const [countdownTime, setCountdownTime] = useState(10);
   
   // Security State
   const [violationReason, setViolationReason] = useState(null); // Menyimpan alasan kenapa ujian stop
@@ -113,12 +114,14 @@ const UTBKStudentApp = () => {
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { status: 'used', loginAt: new Date().toISOString() });
         setStudentName(data.studentName);
-        setViolationReason(null); // Reset violation
-        startTest(true);
+        setViolationReason(null); 
+      
+        try { await document.documentElement.requestFullscreen(); } catch (err) { console.log("Fullscreen blocked"); }
+        
+        setCountdownTime(10); 
+        setScreen('countdown'); 
       }
-    } catch (error) { console.error(error); alert('Koneksi Error.'); }
-  };
-
+      
   const startTest = async (bypass = false) => {
     if (!bypass) return;
     for (const s of SUBTESTS) {
@@ -151,6 +154,15 @@ const UTBKStudentApp = () => {
 
   // Break Timer
   useEffect(() => {
+    if (screen === 'countdown' && countdownTime > 0) {
+      const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000);
+      return () => clearTimeout(t);
+    } else if (screen === 'countdown' && countdownTime === 0) {
+      startTest(true); // Masuk otomatis ke ujian saat waktu habis
+    }
+  }, [countdownTime, screen]);
+      
+  useEffect(() => {
     if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); }
     else if (screen === 'break' && breakTime === 0) {
       const n = currentSubtestIndex + 1; setCurrentSubtestIndex(n); setCurrentQuestion(0); setTimeLeft(testOrder[n].time * 60); setScreen('test');
@@ -180,14 +192,28 @@ const UTBKStudentApp = () => {
   );
 
   // --- UI RENDER ---
-
+  if (screen === 'countdown') {
+    return (
+      <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
+        <div className="mb-8 animate-pulse"><Timer size={64} /></div>
+        <h2 className="text-2xl font-bold mb-4 uppercase tracking-widest">Persiapan Ujian</h2>
+        <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">
+          {countdownTime}
+        </div>
+        <p className="text-indigo-200 text-sm max-w-md text-center px-4">
+          Pastikan Anda dalam posisi nyaman. Dilarang keluar dari mode layar penuh selama ujian berlangsung.
+        </p>
+      </div>
+    );
+  }
+      
   if (screen === 'landing') {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Test UTBK SNBT</h1>
-          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Aman</p>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
+          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Online</p>
 
           {/* DISCLAIMER STRICT MODE */}
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
@@ -211,6 +237,15 @@ const UTBKStudentApp = () => {
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
             <label className="block text-indigo-900 font-bold mb-2 text-sm flex items-center justify-center gap-2"><Ticket size={18}/> Kode Token:</label>
             <input type="text" value={inputToken} onChange={e => setInputToken(e.target.value.toUpperCase())} className="w-full px-4 py-3 border-2 border-indigo-200 rounded-lg text-xl font-mono text-center tracking-widest uppercase outline-none focus:ring-4 focus:ring-indigo-100 bg-white" placeholder="UTBK-XXXXXX" />
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
+            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
+            <ul className="space-y-2 text-sm text-gray-600">
+              <li className="flex justify-between bg-green-50 px-2 py-1 rounded"><span className="flex gap-2"><CheckCircle size={16} className="text-green-600"/>Benar</span><span className="font-bold text-green-700">+4</span></li>
+              <li className="flex justify-between bg-red-50 px-2 py-1 rounded"><span className="flex gap-2"><XCircle size={16} className="text-red-500"/>Salah</span><span className="font-bold text-red-700">0</span></li>
+              <li className="flex justify-between bg-orange-50 px-2 py-1 rounded"><span className="flex gap-2"><AlertCircle size={16} className="text-orange-500"/>Kosong</span><span className="font-bold text-orange-700">-1</span></li>
+            </ul>
           </div>
 
           <button onClick={handleTokenLogin} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:bg-indigo-700 transition shadow-lg transform hover:-translate-y-1">Mulai Ujian Sekarang</button>
