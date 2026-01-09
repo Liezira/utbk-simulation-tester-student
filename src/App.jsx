@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, AlertTriangle, Lock, WifiOff, ZapOff, Copyright } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, AlertTriangle, Lock, WifiOff, ZapOff, Copyright, ShieldAlert } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 
@@ -30,35 +30,39 @@ const UTBKStudentApp = () => {
   const [bankSoal, setBankSoal] = useState({});
   
   // Security State
-  const [isViolation, setIsViolation] = useState(false);
-  const [violationMsg, setViolationMsg] = useState('');
+  const [violationReason, setViolationReason] = useState(null); // Menyimpan alasan kenapa ujian stop
 
-  // --- SECURITY SYSTEM ---
+  // --- SECURITY SYSTEM (STRICT MODE) ---
   useEffect(() => {
+    // 1. Mencegah Klik Kanan
     const handleContextMenu = (e) => e.preventDefault();
+    
+    // 2. Mencegah Shortcut
     const handleKeyDown = (e) => {
       if (
         e.key === 'F12' || 
         (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-        (e.ctrlKey && e.key === 'u') ||
-        e.key === 'PrintScreen'
+        (e.key === 'PrintScreen')
       ) {
         e.preventDefault();
         alert('⚠️ DILARANG: Screenshot atau Developer Tools!');
       }
     };
 
+    // 3. DETEKSI PINDAH TAB / KELUAR APLIKASI (KILL SWITCH)
     const handleVisibilityChange = () => {
       if (document.hidden && screen === 'test') {
-        setIsViolation(true);
-        setViolationMsg('ANDA TERDETEKSI PINDAH TAB! KEMBALI KE UJIAN SEKARANG.');
+        // HUKUMAN: LANGSUNG SELESAI
+        setViolationReason("TERDETEKSI KELUAR APLIKASI / PINDAH TAB");
+        setScreen('result');
       }
     };
 
+    // 4. Deteksi Keluar Fullscreen (Optional: Bisa dibuat warning atau kill switch juga)
+    // Disini saya buat warning keras saja dulu, karena kadang fullscreen lepas sendiri di HP tertentu
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && screen === 'test') {
-        setIsViolation(true);
-        setViolationMsg('DILARANG KELUAR DARI MODE LAYAR PENUH (FULLSCREEN).');
+         alert("⚠️ PERINGATAN: JANGAN KELUAR DARI MODE FULLSCREEN!");
       }
     };
 
@@ -109,6 +113,7 @@ const UTBKStudentApp = () => {
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { status: 'used', loginAt: new Date().toISOString() });
         setStudentName(data.studentName);
+        setViolationReason(null); // Reset violation
         startTest(true);
       }
     } catch (error) { console.error(error); alert('Koneksi Error.'); }
@@ -119,7 +124,8 @@ const UTBKStudentApp = () => {
     for (const s of SUBTESTS) {
       if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; }
     }
-    try { await document.documentElement.requestFullscreen(); } catch (err) {}
+    // Force Fullscreen
+    try { await document.documentElement.requestFullscreen(); } catch (err) { console.log("Fullscreen blocked by browser"); }
 
     const shuffled = [...SUBTESTS].sort(() => Math.random() - 0.5);
     setTestOrder(shuffled);
@@ -135,13 +141,15 @@ const UTBKStudentApp = () => {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
 
+  // Main Timer
   useEffect(() => {
-    if (screen === 'test' && !isViolation && timeLeft > 0) { const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000); return () => clearTimeout(t); }
+    if (screen === 'test' && timeLeft > 0) { const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000); return () => clearTimeout(t); }
     else if (screen === 'test' && timeLeft === 0) {
       if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else setScreen('result');
     }
-  }, [timeLeft, screen, isViolation]);
+  }, [timeLeft, screen]);
 
+  // Break Timer
   useEffect(() => {
     if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); }
     else if (screen === 'break' && breakTime === 0) {
@@ -161,10 +169,8 @@ const UTBKStudentApp = () => {
   };
 
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
-  const resumeTest = async () => { try { await document.documentElement.requestFullscreen(); setIsViolation(false); } catch (e) { setIsViolation(false); } };
-
-  // --- UI COMPONENTS ---
-  // Footer Component (Liezira Branding)
+  
+  // Footer
   const FooterLiezira = () => (
     <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
       <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
@@ -173,42 +179,32 @@ const UTBKStudentApp = () => {
     </div>
   );
 
-  if (isViolation && screen === 'test') {
-    return (
-        <div className="min-h-screen bg-red-600 flex flex-col items-center justify-center text-white p-8 z-50 fixed top-0 left-0 w-full h-full text-center">
-            <AlertTriangle size={80} className="mb-4 animate-bounce" />
-            <h1 className="text-4xl font-bold mb-4">PELANGGARAN!</h1>
-            <p className="text-xl mb-8 font-medium">{violationMsg}</p>
-            <button onClick={resumeTest} className="bg-white text-red-600 px-8 py-4 rounded-xl font-bold">KEMBALI KE UJIAN</button>
-        </div>
-    );
-  }
+  // --- UI RENDER ---
 
   if (screen === 'landing') {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
-          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Online</p>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Test UTBK SNBT</h1>
+          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Aman</p>
 
-          {/* DISCLAIMER BOX */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6 text-left text-xs text-yellow-800">
-            <div className="font-bold flex items-center gap-2 mb-1 text-yellow-900"><AlertTriangle size={14}/> DISCLAIMER PESERTA:</div>
-            <p className="mb-2">Kendala teknis di luar sistem (Server Down/Error) adalah tanggung jawab peserta, meliputi:</p>
-            <ul className="list-disc pl-4 space-y-1">
-               <li><span className="flex items-center gap-1"><ZapOff size={10}/> Mati Listrik / Baterai Habis</span></li>
-               <li><span className="flex items-center gap-1"><WifiOff size={10}/> Sinyal Hilang / Kuota Habis</span></li>
-               <li>Device/HP Error atau Layar Pecah</li>
+          {/* DISCLAIMER STRICT MODE */}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
+            <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> ATURAN STRICT MODE (WAJIB BACA):</div>
+            <ul className="list-disc pl-4 space-y-1 font-semibold">
+               <li>DILARANG PINDAH TAB / MEMBUKA APLIKASI LAIN.</li>
+               <li>DILARANG MINIMIZE BROWSER.</li>
+               <li>Jika terdeteksi keluar dari layar ujian, <span className="underline">UJIAN OTOMATIS SELESAI</span> dan skor langsung dikunci.</li>
             </ul>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
-            <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded"><span className="flex gap-2"><CheckCircle size={16} className="text-green-600"/>Benar</span><span className="font-bold text-green-700">+4</span></li>
-              <li className="flex justify-between bg-red-50 px-2 py-1 rounded"><span className="flex gap-2"><XCircle size={16} className="text-red-500"/>Salah</span><span className="font-bold text-red-700">0</span></li>
-              <li className="flex justify-between bg-orange-50 px-2 py-1 rounded"><span className="flex gap-2"><AlertCircle size={16} className="text-orange-500"/>Kosong</span><span className="font-bold text-orange-700">-1</span></li>
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-6 text-left text-xs text-yellow-800">
+            <div className="font-bold flex items-center gap-2 mb-1 text-yellow-900"><AlertTriangle size={14}/> DISCLAIMER TEKNIS:</div>
+            <p className="mb-2">Kendala teknis di luar sistem adalah tanggung jawab peserta:</p>
+            <ul className="list-disc pl-4 space-y-1">
+               <li><span className="flex items-center gap-1"><ZapOff size={10}/> Mati Listrik / Baterai Habis</span></li>
+               <li><span className="flex items-center gap-1"><WifiOff size={10}/> Sinyal Hilang / Kuota Habis</span></li>
             </ul>
           </div>
 
@@ -218,7 +214,6 @@ const UTBKStudentApp = () => {
           </div>
 
           <button onClick={handleTokenLogin} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:bg-indigo-700 transition shadow-lg transform hover:-translate-y-1">Mulai Ujian Sekarang</button>
-          
           <FooterLiezira />
         </div>
       </div>
@@ -252,7 +247,18 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
           <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
-          <h2 className="text-xl text-gray-600 mb-6 font-medium">{studentName}</h2>
+          <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
+          
+          {/* PESAN PELANGGARAN JIKA ADA */}
+          {violationReason && (
+            <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
+               <div className="flex items-center justify-center gap-2 text-lg">
+                  <ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS
+               </div>
+               <p className="text-sm font-normal mt-1">Alasan: {violationReason}</p>
+            </div>
+          )}
+
           <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 text-left">
