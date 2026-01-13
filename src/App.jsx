@@ -39,24 +39,37 @@ const UTBKStudentApp = () => {
   const [myRank, setMyRank] = useState(null);
   const [violationReason, setViolationReason] = useState(null);
 
-  // --- SECURITY SYSTEM ---
+  // --- SECURITY SYSTEM (ANTI-CHEAT & AUTO SUBMIT) ---
   useEffect(() => {
+    // 1. Blokir Klik Kanan
     const handleContextMenu = (e) => e.preventDefault();
+    
+    // 2. Blokir Screenshot & DevTools
     const handleKeyDown = (e) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || e.key === 'PrintScreen') {
+      if (
+          e.key === 'F12' || 
+          (e.ctrlKey && e.shiftKey && e.key === 'I') || 
+          e.key === 'PrintScreen' || 
+          (e.ctrlKey && e.key === 'u') // View Source
+      ) {
         e.preventDefault();
-        alert('⚠️ DILARANG: Screenshot atau Developer Tools!');
+        alert('⚠️ FITUR DIBATASI: Screenshot & DevTools dilarang!');
       }
     };
+
+    // 3. Auto Submit saat Pindah Tab / Minimize
     const handleVisibilityChange = () => {
       if (document.hidden && screen === 'test') {
-        setViolationReason("TERDETEKSI KELUAR APLIKASI / PINDAH TAB");
+        // Langsung lempar ke result (Auto Submit)
+        setViolationReason("AUTO-SUBMIT: Terdeteksi pindah tab/minimize.");
         setScreen('result');
       }
     };
+
     document.addEventListener('contextmenu', handleContextMenu);
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('keydown', handleKeyDown);
@@ -87,14 +100,14 @@ const UTBKStudentApp = () => {
         const finishExamProcess = async () => {
             const { totalScore } = calculateScore();
             
-            // Hitung Global Time Left
+            // Global Time Calculation
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
             const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
             try {
-                // Update Data
+                // Update Score
                 const tokenRef = doc(db, 'tokens', currentTokenCode);
                 await updateDoc(tokenRef, { 
                     score: totalScore,
@@ -102,7 +115,7 @@ const UTBKStudentApp = () => {
                     finishedAt: new Date().toISOString()
                 });
 
-                // Ambil Leaderboard
+                // Get Leaderboard
                 const q = query(
                     collection(db, 'tokens'),
                     where('score', '!=', null),
@@ -160,7 +173,7 @@ const UTBKStudentApp = () => {
 
   const startTest = (bypass = false) => {
     if (!bypass) return;
-    if (!globalStartTime) setGlobalStartTime(Date.now()); // Set Global Timer
+    if (!globalStartTime) setGlobalStartTime(Date.now()); 
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     const shuffled = [...SUBTESTS].sort(() => Math.random() - 0.5);
@@ -183,6 +196,26 @@ const UTBKStudentApp = () => {
   const calculateScore = () => { const sc = {}; let tot = 0; testOrder.forEach(s => { let sub = 0; questionOrder[s.id].forEach((q, i) => { const k = `${s.id}_${i}`; if (!answers[k]) sub -= 1; else if (answers[k] === q.correct) sub += 4; }); sc[s.id] = sub; tot += sub; }); return { scores: sc, totalScore: tot }; };
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
+  // --- FUNGSI NAVIGASI "NEXT" (TANPA POPUP ALERT) ---
+  const handleNextQuestion = () => {
+    // 1. Jika bukan soal terakhir, lanjut next number
+    if (currentQuestion < currentSubtest.questions - 1) {
+        setCurrentQuestion(currentQuestion + 1);
+    } 
+    // 2. Jika soal terakhir...
+    else {
+        // ...cek apakah masih ada subtest berikutnya?
+        if (currentSubtestIndex < testOrder.length - 1) {
+             // LANGSUNG PINDAH (Gak pake confirm) supaya fullscreen aman
+             setScreen('break'); 
+             setBreakTime(10); 
+        } else {
+             // Kalo ini subtest terakhir, langsung selesai
+             setScreen('result');
+        }
+    }
+  };
+
   const FooterLiezira = () => (
     <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
       <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
@@ -263,14 +296,10 @@ const UTBKStudentApp = () => {
       <div className="sticky top-0 z-40 bg-indigo-700 text-white p-4 shadow-lg"><div className="max-w-6xl mx-auto flex justify-between items-center"><div><h2 className="text-xl font-bold">{currentSubtest.name}</h2><p className="text-sm text-indigo-200">Soal {currentQuestion + 1} / {currentSubtest.questions}</p></div><div className="flex items-center gap-3 bg-indigo-800 px-6 py-3 rounded-lg"><Clock size={24} /><span className="text-2xl font-bold">{formatTime(timeLeft)}</span></div></div></div>
       <div className="max-w-6xl mx-auto p-6"><div className="grid grid-cols-1 lg:grid-cols-4 gap-6"><div className="lg:col-span-1"><div className="bg-white rounded-lg shadow p-4 sticky top-24"><h3 className="font-semibold text-gray-700 mb-3">Navigasi</h3><div className="grid grid-cols-5 gap-2">{Array.from({ length: currentSubtest.questions }).map((_, idx) => { const qKey = `${currentSubtest.id}_${idx}`; return (<button key={idx} onClick={() => setCurrentQuestion(idx)} className={`w-10 h-10 rounded font-semibold ${idx === currentQuestion ? 'bg-indigo-600 text-white' : answers[qKey] ? (doubtful[qKey]?'bg-yellow-400 text-white':'bg-green-500 text-white') : 'bg-gray-200'}`}>{idx + 1}</button>); })}</div></div></div>
       
-      {/* BAGIAN UTAMA SOAL */}
       <div className="lg:col-span-3">
         <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
-          {/* TEKS SOAL */}
           <div className="mb-6">
             <p className="text-lg font-medium text-gray-800 mb-4 leading-relaxed">{currentQ?.question}</p>
-            
-            {/* GAMBAR SOAL DENGAN STYLING FIX */}
             {currentQ?.image && (
                 <img 
                     src={currentQ.image} 
@@ -283,7 +312,13 @@ const UTBKStudentApp = () => {
 
           <div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div>
           <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div>
-          <div className="flex gap-3"><button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button><button onClick={() => { if (currentQuestion < currentSubtest.questions - 1) setCurrentQuestion(currentQuestion + 1); else if (confirm('Lanjut subtest?')) { if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else setScreen('result'); } }} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button></div>
+          
+          {/* TOMBOL NAVIGASI YANG SUDAH DIPERBAIKI (NO ALERT) */}
+          <div className="flex gap-3">
+            <button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button>
+            <button onClick={handleNextQuestion} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button>
+          </div>
+
         </div>
       </div>
       
