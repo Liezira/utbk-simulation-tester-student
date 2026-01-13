@@ -116,7 +116,7 @@ const UTBKStudentApp = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, []); // Empty dependency array: Listener dipasang SEKALI saja, tapi membaca Ref yang selalu update.
+  }, []); 
 
   // Load Bank Soal
   useEffect(() => {
@@ -387,7 +387,9 @@ const UTBKStudentApp = () => {
   }
 
   if (screen === 'result') {
-    const { totalScore } = calculateScore();
+    // AMBIL DATA SKOR & RINCIANNYA
+    const { scores, totalScore } = calculateScore();
+
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
@@ -403,6 +405,17 @@ const UTBKStudentApp = () => {
 
           <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
           
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 text-left">
+            {SUBTESTS.map((s) => (
+                <div key={s.id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex justify-between items-center shadow-sm hover:bg-gray-100 transition">
+                    <span className="text-xs font-bold text-gray-600 uppercase tracking-wide">{s.name}</span>
+                    <span className={`text-lg font-bold font-mono ${scores[s.id] < 0 ? 'text-red-500' : 'text-indigo-600'}`}>{scores[s.id]}</span>
+                </div>
+            ))}
+          </div>
+       
+
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
@@ -429,14 +442,14 @@ const UTBKStudentApp = () => {
       <div className="lg:col-span-3">
         <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
           
-          
+    
           <div className="mb-8">
-            
+           
             <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-justify">
                 {currentQ?.question}
             </div>
             
-            
+           
             {currentQ?.image && (
                 <div className="flex justify-center my-6">
                     <img 
@@ -448,7 +461,7 @@ const UTBKStudentApp = () => {
                 </div>
             )}
           </div>
-          
+         
 
           <div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div>
           <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div>
