@@ -191,7 +191,7 @@ const UTBKStudentApp = () => {
     </div>
   );
 
-  // --- UI SCREENS (LENGKAP) ---
+  // --- UI SCREENS ---
 
   if (screen === 'countdown') {
     return (
@@ -204,18 +204,17 @@ const UTBKStudentApp = () => {
     );
   }
 
-  // ✅ LANDING PAGE LENGKAP (FITUR SKOR KEMBALI)
   if (screen === 'landing') {
     return (
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
-          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Test UTBK SNBT</h1>
+          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Aman</p>
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
-            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG MINIMIZE.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
+            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG MINIMIZE.</li><li>Pelanggaran = <span className="underline">DISKUALIFIKASI</span>.</li></ul>
           </div>
 
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
@@ -223,7 +222,6 @@ const UTBKStudentApp = () => {
             <input type="text" value={inputToken} onChange={e => setInputToken(e.target.value.toUpperCase())} className="w-full px-4 py-3 border-2 border-indigo-200 rounded-lg text-xl font-mono text-center tracking-widest uppercase outline-none focus:ring-4 focus:ring-indigo-100 bg-white" placeholder="UTBK-XXXXXX" />
           </div>
 
-          {/* BOX POIN PENILAIAN (INI YANG KEMBALI) */}
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
             <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
             <ul className="space-y-2 text-sm text-gray-600">
@@ -263,7 +261,33 @@ const UTBKStudentApp = () => {
   return (
     <div className="min-h-screen w-full bg-gray-50 select-none pb-10">
       <div className="sticky top-0 z-40 bg-indigo-700 text-white p-4 shadow-lg"><div className="max-w-6xl mx-auto flex justify-between items-center"><div><h2 className="text-xl font-bold">{currentSubtest.name}</h2><p className="text-sm text-indigo-200">Soal {currentQuestion + 1} / {currentSubtest.questions}</p></div><div className="flex items-center gap-3 bg-indigo-800 px-6 py-3 rounded-lg"><Clock size={24} /><span className="text-2xl font-bold">{formatTime(timeLeft)}</span></div></div></div>
-      <div className="max-w-6xl mx-auto p-6"><div className="grid grid-cols-1 lg:grid-cols-4 gap-6"><div className="lg:col-span-1"><div className="bg-white rounded-lg shadow p-4 sticky top-24"><h3 className="font-semibold text-gray-700 mb-3">Navigasi</h3><div className="grid grid-cols-5 gap-2">{Array.from({ length: currentSubtest.questions }).map((_, idx) => { const qKey = `${currentSubtest.id}_${idx}`; return (<button key={idx} onClick={() => setCurrentQuestion(idx)} className={`w-10 h-10 rounded font-semibold ${idx === currentQuestion ? 'bg-indigo-600 text-white' : answers[qKey] ? (doubtful[qKey]?'bg-yellow-400 text-white':'bg-green-500 text-white') : 'bg-gray-200'}`}>{idx + 1}</button>); })}</div></div></div><div className="lg:col-span-3"><div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]"><div className="mb-6"><p className="text-lg font-medium text-gray-800 mb-4 leading-relaxed">{currentQ?.question}</p>{currentQ?.image && <img src={currentQ.image} alt="Soal" className="max-w-full rounded-lg shadow mb-4" onContextMenu={e=>e.preventDefault()} />}</div><div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div><div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div><div className="flex gap-3"><button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button><button onClick={() => { if (currentQuestion < currentSubtest.questions - 1) setCurrentQuestion(currentQuestion + 1); else if (confirm('Lanjut subtest?')) { if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else setScreen('result'); } }} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button></div></div></div></div></div>
+      <div className="max-w-6xl mx-auto p-6"><div className="grid grid-cols-1 lg:grid-cols-4 gap-6"><div className="lg:col-span-1"><div className="bg-white rounded-lg shadow p-4 sticky top-24"><h3 className="font-semibold text-gray-700 mb-3">Navigasi</h3><div className="grid grid-cols-5 gap-2">{Array.from({ length: currentSubtest.questions }).map((_, idx) => { const qKey = `${currentSubtest.id}_${idx}`; return (<button key={idx} onClick={() => setCurrentQuestion(idx)} className={`w-10 h-10 rounded font-semibold ${idx === currentQuestion ? 'bg-indigo-600 text-white' : answers[qKey] ? (doubtful[qKey]?'bg-yellow-400 text-white':'bg-green-500 text-white') : 'bg-gray-200'}`}>{idx + 1}</button>); })}</div></div></div>
+      
+      {/* BAGIAN UTAMA SOAL */}
+      <div className="lg:col-span-3">
+        <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
+          {/* TEKS SOAL */}
+          <div className="mb-6">
+            <p className="text-lg font-medium text-gray-800 mb-4 leading-relaxed">{currentQ?.question}</p>
+            
+            {/* GAMBAR SOAL DENGAN STYLING FIX */}
+            {currentQ?.image && (
+                <img 
+                    src={currentQ.image} 
+                    alt="Soal" 
+                    className="max-w-full h-auto max-h-[500px] object-contain mx-auto rounded-lg shadow-md mb-6 border border-gray-100" 
+                    onContextMenu={e=>e.preventDefault()} 
+                />
+            )}
+          </div>
+
+          <div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div>
+          <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div>
+          <div className="flex gap-3"><button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button><button onClick={() => { if (currentQuestion < currentSubtest.questions - 1) setCurrentQuestion(currentQuestion + 1); else if (confirm('Lanjut subtest?')) { if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else setScreen('result'); } }} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button></div>
+        </div>
+      </div>
+      
+      </div></div>
     </div>
   );
 };
