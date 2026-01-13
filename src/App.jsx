@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
@@ -19,10 +19,11 @@ const UTBKStudentApp = () => {
   const [inputToken, setInputToken] = useState('');
   const [currentTokenCode, setCurrentTokenCode] = useState('');
 
-  // Test State
+  // State Ujian
   const [currentSubtestIndex, setCurrentSubtestIndex] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [endTime, setEndTime] = useState(null); 
   const [answers, setAnswers] = useState({});
   const [doubtful, setDoubtful] = useState({});
   const [testOrder, setTestOrder] = useState([]);
@@ -31,51 +32,91 @@ const UTBKStudentApp = () => {
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
   
-  // GLOBAL TIME TRACKING
+  // Global & Leaderboard
   const [globalStartTime, setGlobalStartTime] = useState(null);
-
-  // Leaderboard & Security
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [violationReason, setViolationReason] = useState(null);
 
-  // --- SECURITY SYSTEM (ANTI-CHEAT & AUTO SUBMIT) ---
+  // REFS (PENTING UNTUK EVENT LISTENER)
+  const screenRef = useRef(screen); // Menyimpan status screen terbaru
+  const timerRef = useRef(null);
+
+  // Update screenRef setiap kali screen berubah
   useEffect(() => {
-    // 1. Blokir Klik Kanan
-    const handleContextMenu = (e) => e.preventDefault();
-    
-    // 2. Blokir Screenshot & DevTools
+    screenRef.current = screen;
+  }, [screen]);
+
+  // --- SECURITY SYSTEM (ULTIMATE FIX) ---
+  useEffect(() => {
+    // Fungsi Eksekusi Pelanggaran
+    const forceSubmit = (reason) => {
+        // Cek lewat Ref biar datanya selalu FRESH
+        if (screenRef.current === 'test') {
+            setViolationReason(reason);
+            setScreen('result');
+            
+            // Keluar fullscreen biar user sadar
+            if (document.fullscreenElement) {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+    };
+
+    // 1. Deteksi Pindah Tab (Visibility Change)
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi.");
+      }
+    };
+
+    // 2. Deteksi Keluar Fullscreen (Tombol ESC)
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && screenRef.current === 'test') {
+        forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen.");
+      }
+    };
+
+    // 3. Deteksi Kehilangan Fokus (Klik aplikasi lain di Desktop)
+    const handleBlur = () => {
+      // Hanya trigger jika sedang ujian
+      if (screenRef.current === 'test') {
+         forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking).");
+      }
+    };
+
+    // 4. Blokir Tombol Terlarang
     const handleKeyDown = (e) => {
       if (
           e.key === 'F12' || 
           (e.ctrlKey && e.shiftKey && e.key === 'I') || 
           e.key === 'PrintScreen' || 
-          (e.ctrlKey && e.key === 'u') // View Source
+          (e.altKey && e.key === 'Tab') || // Alt+Tab
+          (e.metaKey) || // Tombol Windows/Command
+          (e.ctrlKey && e.key === 'u')
       ) {
         e.preventDefault();
-        alert('⚠️ FITUR DIBATASI: Screenshot & DevTools dilarang!');
+        alert('⚠️ PERINGATAN: Tombol Dilarang!');
       }
     };
 
-    // 3. Auto Submit saat Pindah Tab / Minimize
-    const handleVisibilityChange = () => {
-      if (document.hidden && screen === 'test') {
-        // Langsung lempar ke result (Auto Submit)
-        setViolationReason("AUTO-SUBMIT: Terdeteksi pindah tab/minimize.");
-        setScreen('result');
-      }
-    };
+    const handleContextMenu = (e) => e.preventDefault();
 
-    document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('keydown', handleKeyDown);
+    // Pasang Event Listeners
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    window.addEventListener('blur', handleBlur); // Extra proteksi desktop
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
-      document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      window.removeEventListener('blur', handleBlur);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [screen]);
+  }, []); // Empty dependency array: Listener dipasang SEKALI saja, tapi membaca Ref yang selalu update.
 
   // Load Bank Soal
   useEffect(() => {
@@ -97,25 +138,25 @@ const UTBKStudentApp = () => {
   // --- LOGIC RESULT & GLOBAL SCORING ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
+        if (timerRef.current) clearInterval(timerRef.current);
+
         const finishExamProcess = async () => {
             const { totalScore } = calculateScore();
             
-            // Global Time Calculation
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
             const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
             try {
-                // Update Score
                 const tokenRef = doc(db, 'tokens', currentTokenCode);
                 await updateDoc(tokenRef, { 
                     score: totalScore,
                     finalTimeLeft: globalTimeLeftSeconds,
-                    finishedAt: new Date().toISOString()
+                    finishedAt: new Date().toISOString(),
+                    violation: violationReason || null 
                 });
 
-                // Get Leaderboard
                 const q = query(
                     collection(db, 'tokens'),
                     where('score', '!=', null),
@@ -176,6 +217,7 @@ const UTBKStudentApp = () => {
     if (!globalStartTime) setGlobalStartTime(Date.now()); 
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
+    
     const shuffled = [...SUBTESTS].sort(() => Math.random() - 0.5);
     setTestOrder(shuffled);
     const qOrder = {};
@@ -184,33 +226,91 @@ const UTBKStudentApp = () => {
       qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
     });
     setQuestionOrder(qOrder);
-    setCurrentSubtestIndex(0); setCurrentQuestion(0); setTimeLeft(shuffled[0].time * 60);
-    setAnswers({}); setDoubtful({}); setScreen('test');
+    
+    setCurrentSubtestIndex(0); 
+    setCurrentQuestion(0); 
+    setAnswers({}); 
+    setDoubtful({}); 
+    
+    // Timer Realtime Setup
+    const durationSec = shuffled[0].time * 60;
+    const targetTime = Date.now() + (durationSec * 1000);
+    setEndTime(targetTime);
+    setTimeLeft(durationSec);
+    
+    setScreen('test');
   };
 
-  useEffect(() => { if (screen === 'countdown' && countdownTime > 0) { const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); return () => clearTimeout(t); } else if (screen === 'countdown' && countdownTime === 0) { startTest(true); } }, [countdownTime, screen]);
-  useEffect(() => { if (screen === 'test' && timeLeft > 0) { const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000); return () => clearTimeout(t); } else if (screen === 'test' && timeLeft === 0) { if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else setScreen('result'); } }, [timeLeft, screen]);
-  useEffect(() => { if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); } else if (screen === 'break' && breakTime === 0) { const n = currentSubtestIndex + 1; setCurrentSubtestIndex(n); setCurrentQuestion(0); setTimeLeft(testOrder[n].time * 60); setScreen('test'); } }, [breakTime, screen]);
+  // --- TIMER ENGINE (ANTI FREEZE) ---
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    if (screen === 'test' && endTime) {
+        timerRef.current = setInterval(() => {
+            const now = Date.now();
+            const delta = Math.floor((endTime - now) / 1000); 
+
+            if (delta <= 0) {
+                clearInterval(timerRef.current);
+                setTimeLeft(0);
+                if (currentSubtestIndex < testOrder.length - 1) {
+                    setScreen('break');
+                    setBreakTime(10);
+                } else {
+                    setScreen('result');
+                }
+            } else {
+                setTimeLeft(delta); 
+            }
+        }, 1000);
+    }
+    
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [screen, endTime, currentSubtestIndex, testOrder]);
+
+  // --- COUNTDOWN & BREAK ---
+  useEffect(() => { 
+      if (screen === 'countdown' && countdownTime > 0) { 
+          const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
+          return () => clearTimeout(t); 
+      } else if (screen === 'countdown' && countdownTime === 0) { 
+          startTest(true); 
+      } 
+  }, [countdownTime, screen]);
+
+  useEffect(() => { 
+      if (screen === 'break' && breakTime > 0) { 
+          const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
+          return () => clearTimeout(t); 
+      } else if (screen === 'break' && breakTime === 0) { 
+          const n = currentSubtestIndex + 1; 
+          setCurrentSubtestIndex(n); 
+          setCurrentQuestion(0); 
+          
+          const durationSec = testOrder[n].time * 60;
+          const targetTime = Date.now() + (durationSec * 1000);
+          setEndTime(targetTime);
+          setTimeLeft(durationSec);
+          
+          setScreen('test'); 
+      } 
+  }, [breakTime, screen]);
+
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
+  
   const handleAnswer = (val) => { const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`; setAnswers(p => ({ ...p, [k]: val })); };
   const calculateScore = () => { const sc = {}; let tot = 0; testOrder.forEach(s => { let sub = 0; questionOrder[s.id].forEach((q, i) => { const k = `${s.id}_${i}`; if (!answers[k]) sub -= 1; else if (answers[k] === q.correct) sub += 4; }); sc[s.id] = sub; tot += sub; }); return { scores: sc, totalScore: tot }; };
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
-  // --- FUNGSI NAVIGASI "NEXT" (TANPA POPUP ALERT) ---
+  // Navigasi Tanpa Popup
   const handleNextQuestion = () => {
-    // 1. Jika bukan soal terakhir, lanjut next number
     if (currentQuestion < currentSubtest.questions - 1) {
         setCurrentQuestion(currentQuestion + 1);
-    } 
-    // 2. Jika soal terakhir...
-    else {
-        // ...cek apakah masih ada subtest berikutnya?
+    } else {
         if (currentSubtestIndex < testOrder.length - 1) {
-             // LANGSUNG PINDAH (Gak pake confirm) supaya fullscreen aman
              setScreen('break'); 
              setBreakTime(10); 
         } else {
-             // Kalo ini subtest terakhir, langsung selesai
              setScreen('result');
         }
     }
@@ -224,7 +324,7 @@ const UTBKStudentApp = () => {
     </div>
   );
 
-  // --- UI SCREENS ---
+  // --- UI RENDER ---
 
   if (screen === 'countdown') {
     return (
@@ -247,7 +347,7 @@ const UTBKStudentApp = () => {
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
-            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG MINIMIZE.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
+            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG KELUAR FULLSCREEN.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
           </div>
 
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
@@ -286,6 +386,36 @@ const UTBKStudentApp = () => {
     );
   }
 
+  if (screen === 'result') {
+    const { totalScore } = calculateScore();
+    return (
+      <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
+        <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
+          <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
+          <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
+          
+          {violationReason && (
+            <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
+               <div className="flex items-center justify-center gap-2 text-lg"><ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS</div>
+               <p className="text-sm font-normal mt-1">Alasan: {violationReason}</p>
+            </div>
+          )}
+
+          <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
+          
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
+            <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
+            {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
+                <div className="overflow-hidden rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>)}
+            <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
+          </div>
+
+          <div className="border-t pt-6"><button onClick={() => { document.exitFullscreen().catch(()=>{}); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full md:w-1/2 bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg">Selesai / Logout</button><FooterLiezira /></div>
+        </div>
+      </div>
+    );
+  }
+
   const currentSubtest = testOrder[currentSubtestIndex];
   if (!currentSubtest || !questionOrder[currentSubtest.id]) return <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div><p>Memuat soal...</p></div>;
   const currentQ = questionOrder[currentSubtest.id][currentQuestion];
@@ -313,7 +443,6 @@ const UTBKStudentApp = () => {
           <div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div>
           <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div>
           
-          {/* TOMBOL NAVIGASI YANG SUDAH DIPERBAIKI (NO ALERT) */}
           <div className="flex gap-3">
             <button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button>
             <button onClick={handleNextQuestion} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button>
