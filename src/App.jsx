@@ -428,17 +428,27 @@ const UTBKStudentApp = () => {
       
       <div className="lg:col-span-3">
         <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
-          <div className="mb-6">
-            <p className="text-lg font-medium text-gray-800 mb-4 leading-relaxed">{currentQ?.question}</p>
+          
+          
+          <div className="mb-8">
+            
+            <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-justify">
+                {currentQ?.question}
+            </div>
+            
+            
             {currentQ?.image && (
-                <img 
-                    src={currentQ.image} 
-                    alt="Soal" 
-                    className="max-w-full h-auto max-h-[500px] object-contain mx-auto rounded-lg shadow-md mb-6 border border-gray-100" 
-                    onContextMenu={e=>e.preventDefault()} 
-                />
+                <div className="flex justify-center my-6">
+                    <img 
+                        src={currentQ.image} 
+                        alt="Soal Visual" 
+                        className="max-w-full h-auto max-h-[400px] object-contain rounded-lg shadow-md border border-gray-100" 
+                        onContextMenu={e=>e.preventDefault()} 
+                    />
+                </div>
             )}
           </div>
+          
 
           <div className="space-y-3 mb-6">{['A', 'B', 'C', 'D', 'E'].map((l, idx) => (<button key={l} onClick={() => handleAnswer(l)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 ${answers[key]===l?'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600':'border-gray-200 hover:bg-gray-50'}`}><span className={`w-8 h-8 flex items-center justify-center font-bold rounded ${answers[key]===l?'bg-indigo-600 text-white':'bg-indigo-100 text-indigo-700'}`}>{l}</span><span className="flex-1">{currentQ?.options[idx]}</span></button>))}</div>
           <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5" /><label htmlFor="doubt">Ragu-ragu</label></div>
