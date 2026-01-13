@@ -242,12 +242,12 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Test UTBK SNBT</h1>
-          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Aman</p>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
+          <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
 
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
-            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG MINIMIZE.</li><li>Pelanggaran = <span className="underline">DISKUALIFIKASI</span>.</li></ul>
+            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG MINIMIZE.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
           </div>
 
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
