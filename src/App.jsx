@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+// Import tambahan untuk App Check / reCAPTCHA
+import { getApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
@@ -48,6 +51,28 @@ const UTBKStudentApp = () => {
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
+
+  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) ---
+  useEffect(() => {
+    const initAppCheck = async () => {
+        try {
+            const siteKey = import.meta.env.VITE_RECAPTCHA;
+            if (siteKey) {
+                const app = getApp(); // Ambil instance app firebase yang sudah ada
+                initializeAppCheck(app, {
+                    provider: new ReCaptchaV3Provider(siteKey),
+                    isTokenAutoRefreshEnabled: true
+                });
+                console.log("Security: App Check (reCAPTCHA) initialized.");
+            } else {
+                console.warn("VITE_RECAPTCHA belum diset di .env");
+            }
+        } catch (error) {
+            console.error("App Check init failed:", error);
+        }
+    };
+    initAppCheck();
+  }, []);
 
   // --- SECURITY SYSTEM ---
   useEffect(() => {
@@ -119,6 +144,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
+            // Hitung Skor & Jumlah Benar
             const { totalScore } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
@@ -275,7 +301,7 @@ const UTBKStudentApp = () => {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
   
-  // Handle Answer (Logic Checkbox/Radio/Text)
+  // Handle Answer
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
       
@@ -289,15 +315,15 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING & CORRECT COUNT ---
+  // --- SCORING SYSTEM (UPDATE: HITUNG JUMLAH BENAR) ---
   const calculateScore = () => { 
       const sc = {}; 
-      const cc = {}; // Correct Count per subtest
+      const cc = {}; // Objek untuk menyimpan jumlah benar per subtest
       let tot = 0; 
       
       testOrder.forEach(s => { 
           let sub = 0; 
-          let correct = 0; // Hitung jumlah benar
+          let correctCount = 0; // Counter Benar
 
           questionOrder[s.id].forEach((q, i) => { 
               const k = `${s.id}_${i}`; 
@@ -323,16 +349,16 @@ const UTBKStudentApp = () => {
                   }
 
                   if (isCorrect) {
-                      correct++; // Tambah counter benar
-                      if (q.type === 'isian') sub += 7; // Isian +7
-                      else sub += 5; // Ganda/Majemuk +5
+                      correctCount++; // Tambah 1 jika benar
+                      if (q.type === 'isian') sub += 7; 
+                      else sub += 5; 
                   } else {
-                      sub += 0; // Salah 0
+                      sub += 0; 
                   }
               }
           }); 
           sc[s.id] = sub; 
-          cc[s.id] = correct; // Simpan jumlah benar ke object
+          cc[s.id] = correctCount; // Simpan ke objek correctCounts
           tot += sub; 
       }); 
       return { scores: sc, totalScore: tot, correctCounts: cc }; 
@@ -425,7 +451,7 @@ const UTBKStudentApp = () => {
   }
 
   if (screen === 'result') {
-    // --- AMBIL DATA SKOR DAN CORRECT COUNT ---
+    // --- AMBIL DATA SKOR & CORRECT COUNTS ---
     const { scores, totalScore, correctCounts } = calculateScore();
     
     return (
@@ -443,13 +469,13 @@ const UTBKStudentApp = () => {
 
           <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
           
-          {/* --- DETAIL SKOR & JUMLAH BENAR --- */}
+          {/* --- TAMPILAN BARU: SKOR + JUMLAH BENAR --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 text-left">
             {SUBTESTS.map((s) => (
                 <div key={s.id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex justify-between items-center shadow-sm hover:bg-gray-100 transition">
                     <div>
                         <span className="text-xs font-bold text-gray-600 uppercase tracking-wide block">{s.name}</span>
-                        {/* Menampilkan Benar/Total */}
+                        {/* Menampilkan Jumlah Benar */}
                         <span className="text-xs text-gray-500 font-medium bg-gray-200 px-2 py-0.5 rounded mt-1 inline-block">
                             Benar: <span className="text-green-700 font-bold">{correctCounts[s.id]}</span> / {s.questions}
                         </span>
@@ -462,7 +488,7 @@ const UTBKStudentApp = () => {
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             
-            {/* FIX DISINI: overflow-x-auto AGAR BISA DI-SCROLL KE SAMPING */}
+            {/* LEADERBOARD FIXED SCROLL */}
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm">
                     <table className="min-w-full bg-white text-sm">
@@ -487,7 +513,6 @@ const UTBKStudentApp = () => {
                     </table>
                 </div>
             )}
-            
             <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
           </div>
 
@@ -512,7 +537,6 @@ const UTBKStudentApp = () => {
         <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
           
           <div className="mb-8">
-            {/* Badge Tipe Soal */}
             <div className="mb-2">
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex w-fit items-center gap-1">
                     {qType === 'pilihan_majemuk' ? <CheckSquare size={12}/> : qType === 'isian' ? <AlignLeft size={12}/> : <List size={12}/>} 
