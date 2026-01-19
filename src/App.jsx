@@ -52,18 +52,22 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) ---
+  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + DEBUG MODE ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
             const siteKey = import.meta.env.VITE_RECAPTCHA;
             if (siteKey) {
+                // --- TAMBAHAN KHUSUS DEBUG LOCALHOST ---
+                self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; 
+                // ---------------------------------------
+
                 const app = getApp(); // Ambil instance app firebase yang sudah ada
                 initializeAppCheck(app, {
                     provider: new ReCaptchaV3Provider(siteKey),
                     isTokenAutoRefreshEnabled: true
                 });
-                console.log("Security: App Check (reCAPTCHA) initialized.");
+                console.log("Security: App Check (reCAPTCHA) initialized with Debug Mode.");
             } else {
                 console.warn("VITE_RECAPTCHA belum diset di .env");
             }
@@ -145,7 +149,7 @@ const UTBKStudentApp = () => {
 
         const finishExamProcess = async () => {
             // Hitung Skor & Jumlah Benar
-            const { totalScore } = calculateScore();
+            const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
@@ -315,15 +319,15 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING SYSTEM (UPDATE: HITUNG JUMLAH BENAR) ---
+  // --- SCORING SYSTEM ---
   const calculateScore = () => { 
       const sc = {}; 
-      const cc = {}; // Objek untuk menyimpan jumlah benar per subtest
+      const cc = {}; // Correct Counts
       let tot = 0; 
       
       testOrder.forEach(s => { 
           let sub = 0; 
-          let correctCount = 0; // Counter Benar
+          let correctCount = 0; 
 
           questionOrder[s.id].forEach((q, i) => { 
               const k = `${s.id}_${i}`; 
@@ -349,7 +353,7 @@ const UTBKStudentApp = () => {
                   }
 
                   if (isCorrect) {
-                      correctCount++; // Tambah 1 jika benar
+                      correctCount++;
                       if (q.type === 'isian') sub += 7; 
                       else sub += 5; 
                   } else {
@@ -358,7 +362,7 @@ const UTBKStudentApp = () => {
               }
           }); 
           sc[s.id] = sub; 
-          cc[s.id] = correctCount; // Simpan ke objek correctCounts
+          cc[s.id] = correctCount;
           tot += sub; 
       }); 
       return { scores: sc, totalScore: tot, correctCounts: cc }; 
@@ -451,7 +455,6 @@ const UTBKStudentApp = () => {
   }
 
   if (screen === 'result') {
-    // --- AMBIL DATA SKOR & CORRECT COUNTS ---
     const { scores, totalScore, correctCounts } = calculateScore();
     
     return (
@@ -469,13 +472,11 @@ const UTBKStudentApp = () => {
 
           <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
           
-          {/* --- TAMPILAN BARU: SKOR + JUMLAH BENAR --- */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 text-left">
             {SUBTESTS.map((s) => (
                 <div key={s.id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex justify-between items-center shadow-sm hover:bg-gray-100 transition">
                     <div>
                         <span className="text-xs font-bold text-gray-600 uppercase tracking-wide block">{s.name}</span>
-                        {/* Menampilkan Jumlah Benar */}
                         <span className="text-xs text-gray-500 font-medium bg-gray-200 px-2 py-0.5 rounded mt-1 inline-block">
                             Benar: <span className="text-green-700 font-bold">{correctCounts[s.id]}</span> / {s.questions}
                         </span>
@@ -488,7 +489,6 @@ const UTBKStudentApp = () => {
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             
-            {/* LEADERBOARD FIXED SCROLL */}
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm">
                     <table className="min-w-full bg-white text-sm">
