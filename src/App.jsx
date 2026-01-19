@@ -58,8 +58,6 @@ const UTBKStudentApp = () => {
         try {
             const siteKey = import.meta.env.VITE_RECAPTCHA;
             if (siteKey) {
-                // FIX: Hanya nyalakan debug token jika di Localhost
-                // Ini mencegah error "Build Failed" di Vercel
                 if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
                     window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
                     console.log("Mode Localhost: Debug Token Aktif");
@@ -302,7 +300,7 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING SYSTEM (ADVANCED: Isian +7, Ganda +5, Kosong -1) ---
+  // --- SCORING SYSTEM BARU (Isian +6, Majemuk +5, Ganda +3) ---
   const calculateScore = () => { 
       const sc = {}; 
       const cc = {}; // Correct Counts
@@ -317,26 +315,39 @@ const UTBKStudentApp = () => {
               const ans = answers[k];
               
               if (!ans || (Array.isArray(ans) && ans.length === 0) || (typeof ans === 'string' && ans.trim() === '')) {
-                  sub -= 1; // Kosong
+                  sub -= 1; // Kosong (-1)
               } else {
                   let isCorrect = false;
+                  
+                  // 1. Cek Pilihan Majemuk
                   if (q.type === 'pilihan_majemuk') {
                       if (Array.isArray(ans) && Array.isArray(q.correct)) {
                           const sortedAns = [...ans].sort().join(',');
                           const sortedKey = [...q.correct].sort().join(',');
                           isCorrect = (sortedAns === sortedKey);
                       }
-                  } else if (q.type === 'isian') {
+                  } 
+                  // 2. Cek Isian Singkat
+                  else if (q.type === 'isian') {
                       if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
-                  } else {
+                  } 
+                  // 3. Cek Pilihan Ganda (Default)
+                  else {
                       isCorrect = (ans === q.correct);
                   }
 
+                  // Hitung Nilai Berdasarkan Tipe
                   if (isCorrect) {
                       correctCount++;
-                      if (q.type === 'isian') sub += 7; else sub += 5; 
+                      if (q.type === 'isian') {
+                          sub += 6; // Isian +6
+                      } else if (q.type === 'pilihan_majemuk') {
+                          sub += 5; // Majemuk +5
+                      } else {
+                          sub += 3; // Pilihan Ganda +3
+                      }
                   } else {
-                      sub += 0; 
+                      sub += 0; // Salah (0)
                   }
               }
           }); 
@@ -387,8 +398,9 @@ const UTBKStudentApp = () => {
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
             <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Isian Benar</span><span className="font-bold text-green-700">+7</span></li>
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Ganda Benar</span><span className="font-bold text-green-700">+5</span></li>
+              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Isian Benar</span><span className="font-bold text-green-700">+6</span></li>
+              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Pilihan Majemuk</span><span className="font-bold text-green-700">+5</span></li>
+              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Pilihan Ganda</span><span className="font-bold text-green-700">+3</span></li>
               <li className="flex justify-between bg-red-50 px-2 py-1 rounded border border-red-100"><span className="flex gap-2 items-center"><XCircle size={16} className="text-red-500"/>Salah</span><span className="font-bold text-red-700">0</span></li>
               <li className="flex justify-between bg-orange-50 px-2 py-1 rounded border border-orange-100"><span className="flex gap-2 items-center"><AlertCircle size={16} className="text-orange-500"/>Kosong</span><span className="font-bold text-orange-700">-1</span></li>
             </ul>
