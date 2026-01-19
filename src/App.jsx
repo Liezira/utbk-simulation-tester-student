@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-// Import App Check
+// Import App Check & ReCaptcha
 import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
@@ -52,26 +52,27 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + DEBUG TOKEN ---
+  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + VERCEL FIX ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
-            // Ambil Site Key dari Vercel Environment Variable
             const siteKey = import.meta.env.VITE_RECAPTCHA;
-            
-            // Cek apakah Key terbaca (Cek Console Browser jika gagal)
             if (siteKey) {
-                // Aktifkan Debug Token agar Localhost tidak diblokir reCAPTCHA
-                self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; 
+                // FIX: Hanya nyalakan debug token jika di Localhost
+                // Ini mencegah error "Build Failed" di Vercel
+                if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+                    window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                    console.log("Mode Localhost: Debug Token Aktif");
+                }
 
                 const app = getApp(); 
                 initializeAppCheck(app, {
                     provider: new ReCaptchaV3Provider(siteKey),
                     isTokenAutoRefreshEnabled: true
                 });
-                console.log("Security: App Check (reCAPTCHA) initialized.");
+                console.log("Security: App Check initialized.");
             } else {
-                console.warn("Security Warning: VITE_RECAPTCHA tidak ditemukan di .env atau Vercel Settings.");
+                console.warn("VITE_RECAPTCHA belum diset di .env");
             }
         } catch (error) {
             console.error("App Check init failed:", error);
@@ -150,6 +151,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
+            // Hitung Skor & Jumlah Benar
             const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
@@ -252,64 +254,44 @@ const UTBKStudentApp = () => {
   // Timer Engine
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
-
     if (screen === 'test' && endTime) {
         timerRef.current = setInterval(() => {
             const now = Date.now();
             const delta = Math.floor((endTime - now) / 1000); 
-
             if (delta <= 0) {
                 clearInterval(timerRef.current);
                 setTimeLeft(0);
-                if (currentSubtestIndex < testOrder.length - 1) {
-                    setScreen('break');
-                    setBreakTime(10);
-                } else {
-                    setScreen('result');
-                }
-            } else {
-                setTimeLeft(delta); 
-            }
+                if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } 
+                else { setScreen('result'); }
+            } else { setTimeLeft(delta); }
         }, 1000);
     }
-    
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [screen, endTime, currentSubtestIndex, testOrder]);
 
   // Countdown & Break
   useEffect(() => { 
-      if (screen === 'countdown' && countdownTime > 0) { 
-          const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
-          return () => clearTimeout(t); 
-      } else if (screen === 'countdown' && countdownTime === 0) { 
-          startTest(true); 
-      } 
+      if (screen === 'countdown' && countdownTime > 0) { const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); return () => clearTimeout(t); } 
+      else if (screen === 'countdown' && countdownTime === 0) { startTest(true); } 
   }, [countdownTime, screen]);
 
   useEffect(() => { 
-      if (screen === 'break' && breakTime > 0) { 
-          const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
-          return () => clearTimeout(t); 
-      } else if (screen === 'break' && breakTime === 0) { 
+      if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); } 
+      else if (screen === 'break' && breakTime === 0) { 
           const n = currentSubtestIndex + 1; 
-          setCurrentSubtestIndex(n); 
-          setCurrentQuestion(0); 
-          
+          setCurrentSubtestIndex(n); setCurrentQuestion(0); 
           const durationSec = testOrder[n].time * 60;
-          const targetTime = Date.now() + (durationSec * 1000);
-          setEndTime(targetTime);
+          setEndTime(Date.now() + (durationSec * 1000));
           setTimeLeft(durationSec);
-          
           setScreen('test'); 
       } 
   }, [breakTime, screen]);
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
   
-  // Handle Answer
+  // Handle Answer (Smart Logic: Single/Array/String)
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
-      
       if (type === 'pilihan_majemuk') {
           let current = answers[k] || [];
           if (current.includes(val)) current = current.filter(x => x !== val);
@@ -320,7 +302,7 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING SYSTEM ---
+  // --- SCORING SYSTEM (ADVANCED: Isian +7, Ganda +5, Kosong -1) ---
   const calculateScore = () => { 
       const sc = {}; 
       const cc = {}; // Correct Counts
@@ -338,7 +320,6 @@ const UTBKStudentApp = () => {
                   sub -= 1; // Kosong
               } else {
                   let isCorrect = false;
-                  
                   if (q.type === 'pilihan_majemuk') {
                       if (Array.isArray(ans) && Array.isArray(q.correct)) {
                           const sortedAns = [...ans].sort().join(',');
@@ -346,17 +327,14 @@ const UTBKStudentApp = () => {
                           isCorrect = (sortedAns === sortedKey);
                       }
                   } else if (q.type === 'isian') {
-                      if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) {
-                          isCorrect = true;
-                      }
+                      if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
                   } else {
                       isCorrect = (ans === q.correct);
                   }
 
                   if (isCorrect) {
                       correctCount++;
-                      if (q.type === 'isian') sub += 7; 
-                      else sub += 5; 
+                      if (q.type === 'isian') sub += 7; else sub += 5; 
                   } else {
                       sub += 0; 
                   }
@@ -372,25 +350,11 @@ const UTBKStudentApp = () => {
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
   const handleNextQuestion = () => {
-    if (currentQuestion < currentSubtest.questions - 1) {
-        setCurrentQuestion(currentQuestion + 1);
-    } else {
-        if (currentSubtestIndex < testOrder.length - 1) {
-             setScreen('break'); 
-             setBreakTime(10); 
-        } else {
-             setScreen('result');
-        }
-    }
+    if (currentQuestion < currentSubtest.questions - 1) { setCurrentQuestion(currentQuestion + 1); } 
+    else { if (currentSubtestIndex < testOrder.length - 1) { setScreen('break'); setBreakTime(10); } else { setScreen('result'); } }
   };
 
-  const FooterLiezira = () => (
-    <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
-      <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
-        <Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span>
-      </p>
-    </div>
-  );
+  const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
   // --- UI RENDER ---
 
@@ -412,17 +376,14 @@ const UTBKStudentApp = () => {
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
-
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
             <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG KELUAR FULLSCREEN.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
           </div>
-
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
             <label className="block text-indigo-900 font-bold mb-2 text-sm flex items-center justify-center gap-2"><Ticket size={18}/> Kode Token:</label>
             <input type="text" value={inputToken} onChange={e => setInputToken(e.target.value.toUpperCase())} className="w-full px-4 py-3 border-2 border-indigo-200 rounded-lg text-xl font-mono text-center tracking-widest uppercase outline-none focus:ring-4 focus:ring-indigo-100 bg-white" placeholder="UTBK-XXXXXX" />
           </div>
-
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
             <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
             <ul className="space-y-2 text-sm text-gray-600">
@@ -432,7 +393,6 @@ const UTBKStudentApp = () => {
               <li className="flex justify-between bg-orange-50 px-2 py-1 rounded border border-orange-100"><span className="flex gap-2 items-center"><AlertCircle size={16} className="text-orange-500"/>Kosong</span><span className="font-bold text-orange-700">-1</span></li>
             </ul>
           </div>
-
           <button onClick={handleTokenLogin} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:bg-indigo-700 transition shadow-lg transform hover:-translate-y-1">Mulai Ujian Sekarang</button>
           <FooterLiezira />
         </div>
@@ -457,20 +417,17 @@ const UTBKStudentApp = () => {
 
   if (screen === 'result') {
     const { scores, totalScore, correctCounts } = calculateScore();
-    
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
           <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
           <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
-          
           {violationReason && (
             <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
                <div className="flex items-center justify-center gap-2 text-lg"><ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS</div>
                <p className="text-sm font-normal mt-1">Alasan: {violationReason}</p>
             </div>
           )}
-
           <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 text-left">
@@ -478,9 +435,7 @@ const UTBKStudentApp = () => {
                 <div key={s.id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex justify-between items-center shadow-sm hover:bg-gray-100 transition">
                     <div>
                         <span className="text-xs font-bold text-gray-600 uppercase tracking-wide block">{s.name}</span>
-                        <span className="text-xs text-gray-500 font-medium bg-gray-200 px-2 py-0.5 rounded mt-1 inline-block">
-                            Benar: <span className="text-green-700 font-bold">{correctCounts[s.id]}</span> / {s.questions}
-                        </span>
+                        <span className="text-xs text-gray-500 font-medium bg-gray-200 px-2 py-0.5 rounded mt-1 inline-block">Benar: <span className="text-green-700 font-bold">{correctCounts[s.id]}</span> / {s.questions}</span>
                     </div>
                     <span className={`text-lg font-bold font-mono ${scores[s.id] < 0 ? 'text-red-500' : 'text-indigo-600'}`}>{scores[s.id]}</span>
                 </div>
@@ -489,34 +444,11 @@ const UTBKStudentApp = () => {
 
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
-            
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
-                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm">
-                    <table className="min-w-full bg-white text-sm">
-                        <thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap">
-                            <tr>
-                                <th className="py-3 px-4 text-left">#</th>
-                                <th className="py-3 px-4 text-left">Nama Siswa</th>
-                                <th className="py-3 px-4 text-center">Skor</th>
-                                <th className="py-3 px-4 text-center">Sisa Waktu Global</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-indigo-50 whitespace-nowrap">
-                            {leaderboard.map((item, index) => (
-                                <tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}>
-                                    <td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td>
-                                    <td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td>
-                                    <td className="py-2 px-4 text-center text-indigo-600">{item.score}</td>
-                                    <td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
             )}
             <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
           </div>
-
           <div className="border-t pt-6"><button onClick={() => { document.exitFullscreen().catch(()=>{}); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full md:w-1/2 bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg">Selesai / Logout</button><FooterLiezira /></div>
         </div>
       </div>
@@ -538,57 +470,24 @@ const UTBKStudentApp = () => {
         <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
           
           <div className="mb-8">
-            <div className="mb-2">
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex w-fit items-center gap-1">
-                    {qType === 'pilihan_majemuk' ? <CheckSquare size={12}/> : qType === 'isian' ? <AlignLeft size={12}/> : <List size={12}/>} 
-                    {qType.replace('_', ' ')}
-                </span>
-            </div>
-
-            <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-justify">
-                <Latex>{currentQ?.question}</Latex>
-            </div>
-            
-            {currentQ?.image && (
-                <div className="flex justify-center my-6">
-                    <img 
-                        src={currentQ.image} 
-                        alt="Soal Visual" 
-                        className="max-w-full h-auto max-h-[400px] object-contain rounded-lg shadow-md border border-gray-100" 
-                        onContextMenu={e=>e.preventDefault()} 
-                    />
-                </div>
-            )}
+            <div className="mb-2"><span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex w-fit items-center gap-1">{qType === 'pilihan_majemuk' ? <CheckSquare size={12}/> : qType === 'isian' ? <AlignLeft size={12}/> : <List size={12}/>} {qType.replace('_', ' ')}</span></div>
+            <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-justify"><Latex>{currentQ?.question}</Latex></div>
+            {currentQ?.image && (<div className="flex justify-center my-6"><img src={currentQ.image} alt="Soal Visual" className="max-w-full h-auto max-h-[400px] object-contain rounded-lg shadow-md border border-gray-100" onContextMenu={e=>e.preventDefault()} /></div>)}
           </div>
 
           <div className="mb-8">
               {qType === 'isian' ? (
                   <div className="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300">
                       <label className="block text-sm font-bold text-gray-600 mb-2">Jawaban Singkat (Angka/Kata):</label>
-                      <input 
-                        type="text" 
-                        value={answers[key] || ''} 
-                        onChange={(e) => handleAnswer(e.target.value, 'isian')} 
-                        className="w-full p-4 text-xl font-mono border-2 border-indigo-200 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 outline-none transition"
-                        placeholder="Ketik jawaban kamu di sini..." 
-                      />
+                      <input type="text" value={answers[key] || ''} onChange={(e) => handleAnswer(e.target.value, 'isian')} className="w-full p-4 text-xl font-mono border-2 border-indigo-200 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 outline-none transition" placeholder="Ketik jawaban kamu di sini..." />
                   </div>
               ) : (
                   <div className="space-y-3">
                     {['A', 'B', 'C', 'D', 'E'].map((l, idx) => {
-                        const isSelected = qType === 'pilihan_majemuk' 
-                            ? (answers[key] || []).includes(l)
-                            : answers[key] === l;
-                        
+                        const isSelected = qType === 'pilihan_majemuk' ? (answers[key] || []).includes(l) : answers[key] === l;
                         return (
-                          <button 
-                            key={l} 
-                            onClick={() => handleAnswer(l, qType)} 
-                            className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 transition ${isSelected ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-gray-200 hover:bg-gray-50'}`}
-                          >
-                            <div className={`w-8 h-8 flex items-center justify-center font-bold rounded transition ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
-                                {qType === 'pilihan_majemuk' ? (isSelected ? <CheckSquare size={18}/> : <span className="w-4 h-4 border-2 border-indigo-400 rounded-sm"></span>) : l}
-                            </div>
+                          <button key={l} onClick={() => handleAnswer(l, qType)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 transition ${isSelected ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                            <div className={`w-8 h-8 flex items-center justify-center font-bold rounded transition ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>{qType === 'pilihan_majemuk' ? (isSelected ? <CheckSquare size={18}/> : <span className="w-4 h-4 border-2 border-indigo-400 rounded-sm"></span>) : l}</div>
                             <span className="flex-1 font-medium text-gray-700"><Latex>{currentQ?.options[idx] || ''}</Latex></span>
                           </button>
                         );
@@ -598,15 +497,9 @@ const UTBKStudentApp = () => {
           </div>
 
           <div className="flex items-center gap-3 mb-6"><input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5 cursor-pointer" /><label htmlFor="doubt" className="cursor-pointer font-medium text-gray-600">Ragu-ragu</label></div>
-          
-          <div className="flex gap-3">
-            <button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button>
-            <button onClick={handleNextQuestion} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button>
-          </div>
-
+          <div className="flex gap-3"><button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button><button onClick={handleNextQuestion} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button></div>
         </div>
       </div>
-      
       </div></div>
     </div>
   );
