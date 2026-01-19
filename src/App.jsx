@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-// Import tambahan untuk App Check / reCAPTCHA
+// Import App Check
 import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
@@ -52,24 +52,26 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + DEBUG MODE ---
+  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + DEBUG TOKEN ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
+            // Ambil Site Key dari Vercel Environment Variable
             const siteKey = import.meta.env.VITE_RECAPTCHA;
+            
+            // Cek apakah Key terbaca (Cek Console Browser jika gagal)
             if (siteKey) {
-                // --- TAMBAHAN KHUSUS DEBUG LOCALHOST ---
+                // Aktifkan Debug Token agar Localhost tidak diblokir reCAPTCHA
                 self.FIREBASE_APPCHECK_DEBUG_TOKEN = true; 
-                // ---------------------------------------
 
-                const app = getApp(); // Ambil instance app firebase yang sudah ada
+                const app = getApp(); 
                 initializeAppCheck(app, {
                     provider: new ReCaptchaV3Provider(siteKey),
                     isTokenAutoRefreshEnabled: true
                 });
-                console.log("Security: App Check (reCAPTCHA) initialized with Debug Mode.");
+                console.log("Security: App Check (reCAPTCHA) initialized.");
             } else {
-                console.warn("VITE_RECAPTCHA belum diset di .env");
+                console.warn("Security Warning: VITE_RECAPTCHA tidak ditemukan di .env atau Vercel Settings.");
             }
         } catch (error) {
             console.error("App Check init failed:", error);
@@ -148,7 +150,6 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            // Hitung Skor & Jumlah Benar
             const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
