@@ -289,9 +289,9 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING & CORRECT COUNT (FITUR TAMBAHAN) ---
+  // --- SCORING & CORRECT COUNT ---
   const calculateScore = () => { 
-      const sc = {}; // Score per subtest
+      const sc = {}; 
       const cc = {}; // Correct Count per subtest
       let tot = 0; 
       
@@ -461,8 +461,33 @@ const UTBKStudentApp = () => {
 
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
+            
+            {/* FIX DISINI: overflow-x-auto AGAR BISA DI-SCROLL KE SAMPING */}
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
-                <div className="overflow-hidden rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>)}
+                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm">
+                    <table className="min-w-full bg-white text-sm">
+                        <thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap">
+                            <tr>
+                                <th className="py-3 px-4 text-left">#</th>
+                                <th className="py-3 px-4 text-left">Nama Siswa</th>
+                                <th className="py-3 px-4 text-center">Skor</th>
+                                <th className="py-3 px-4 text-center">Sisa Waktu Global</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-indigo-50 whitespace-nowrap">
+                            {leaderboard.map((item, index) => (
+                                <tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}>
+                                    <td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td>
+                                    <td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td>
+                                    <td className="py-2 px-4 text-center text-indigo-600">{item.score}</td>
+                                    <td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            
             <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
           </div>
 
