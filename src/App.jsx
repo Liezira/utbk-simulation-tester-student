@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
-// Import App Check & ReCaptcha
 import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
@@ -24,7 +23,6 @@ const UTBKStudentApp = () => {
   const [inputToken, setInputToken] = useState('');
   const [currentTokenCode, setCurrentTokenCode] = useState('');
 
-  // State Ujian
   const [currentSubtestIndex, setCurrentSubtestIndex] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -37,22 +35,18 @@ const UTBKStudentApp = () => {
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
   
-  // Global & Leaderboard
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [violationReason, setViolationReason] = useState(null);
 
-  // REFS
   const screenRef = useRef(screen); 
   const timerRef = useRef(null);
 
-  // Update screenRef
   useEffect(() => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. INITIALIZE APP CHECK (RECAPTCHA) + VERCEL FIX ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
@@ -60,7 +54,6 @@ const UTBKStudentApp = () => {
             if (siteKey) {
                 if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
                     window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-                    console.log("Mode Localhost: Debug Token Aktif");
                 }
 
                 const app = getApp(); 
@@ -68,7 +61,6 @@ const UTBKStudentApp = () => {
                     provider: new ReCaptchaV3Provider(siteKey),
                     isTokenAutoRefreshEnabled: true
                 });
-                console.log("Security: App Check initialized.");
             } else {
                 console.warn("VITE_RECAPTCHA belum diset di .env");
             }
@@ -79,7 +71,6 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- SECURITY SYSTEM ---
   useEffect(() => {
     const forceSubmit = (reason) => {
         if (screenRef.current === 'test') {
@@ -126,7 +117,6 @@ const UTBKStudentApp = () => {
     };
   }, []); 
 
-  // Load Bank Soal
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -143,13 +133,11 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  // --- LOGIC RESULT ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            // Hitung Skor & Jumlah Benar
             const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
@@ -184,6 +172,7 @@ const UTBKStudentApp = () => {
                     top10.push({
                         rank: rank,
                         name: data.studentName,
+                        school: data.studentSchool || '-', 
                         score: data.score,
                         timeLeft: data.finalTimeLeft 
                     });
@@ -249,7 +238,6 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
-  // Timer Engine
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -267,7 +255,6 @@ const UTBKStudentApp = () => {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [screen, endTime, currentSubtestIndex, testOrder]);
 
-  // Countdown & Break
   useEffect(() => { 
       if (screen === 'countdown' && countdownTime > 0) { const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); return () => clearTimeout(t); } 
       else if (screen === 'countdown' && countdownTime === 0) { startTest(true); } 
@@ -287,7 +274,6 @@ const UTBKStudentApp = () => {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
   
-  // Handle Answer (Smart Logic: Single/Array/String)
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
       if (type === 'pilihan_majemuk') {
@@ -300,10 +286,9 @@ const UTBKStudentApp = () => {
       }
   };
 
-  // --- SCORING SYSTEM BARU (Isian +6, Majemuk +5, Ganda +3) ---
   const calculateScore = () => { 
       const sc = {}; 
-      const cc = {}; // Correct Counts
+      const cc = {}; 
       let tot = 0; 
       
       testOrder.forEach(s => { 
@@ -315,11 +300,10 @@ const UTBKStudentApp = () => {
               const ans = answers[k];
               
               if (!ans || (Array.isArray(ans) && ans.length === 0) || (typeof ans === 'string' && ans.trim() === '')) {
-                  sub -= 1; // Kosong (-1)
+                  sub -= 1; 
               } else {
                   let isCorrect = false;
                   
-                  // 1. Cek Pilihan Majemuk
                   if (q.type === 'pilihan_majemuk') {
                       if (Array.isArray(ans) && Array.isArray(q.correct)) {
                           const sortedAns = [...ans].sort().join(',');
@@ -327,27 +311,24 @@ const UTBKStudentApp = () => {
                           isCorrect = (sortedAns === sortedKey);
                       }
                   } 
-                  // 2. Cek Isian Singkat
                   else if (q.type === 'isian') {
                       if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
                   } 
-                  // 3. Cek Pilihan Ganda (Default)
                   else {
                       isCorrect = (ans === q.correct);
                   }
 
-                  // Hitung Nilai Berdasarkan Tipe
                   if (isCorrect) {
                       correctCount++;
                       if (q.type === 'isian') {
-                          sub += 6; // Isian +6
+                          sub += 6; 
                       } else if (q.type === 'pilihan_majemuk') {
-                          sub += 5; // Majemuk +5
+                          sub += 5; 
                       } else {
-                          sub += 3; // Pilihan Ganda +3
+                          sub += 3; 
                       }
                   } else {
-                      sub += 0; // Salah (0)
+                      sub += 0; 
                   }
               }
           }); 
@@ -366,8 +347,6 @@ const UTBKStudentApp = () => {
   };
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
-
-  // --- UI RENDER ---
 
   if (screen === 'countdown') {
     return (
@@ -457,7 +436,7 @@ const UTBKStudentApp = () => {
           <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
-                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
+                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
             )}
             <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
           </div>
