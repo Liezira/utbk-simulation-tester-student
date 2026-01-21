@@ -49,6 +49,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
+  // --- 1. SESSION RESTORE & LOGIC PENGECEKAN STATUS ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -59,20 +60,35 @@ const UTBKStudentApp = () => {
                 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    const loginTime = new Date(data.loginAt || data.createdAt).getTime();
-                    const oneDay = 24 * 60 * 60 * 1000;
                     
-                    if (Date.now() - loginTime < oneDay) {
-                        setStudentName(data.studentName);
-                        setCurrentTokenCode(savedToken);
-                        
-                        if (data.score !== undefined && data.score !== null) {
-                            if (data.answers) setAnswers(data.answers);
-                            setScreen('result');
-                        } 
-                    } else {
+                    // CEK EXPIRATION (1x24 JAM)
+                    const createdTime = new Date(data.createdAt).getTime();
+                    const oneDay = 24 * 60 * 60 * 1000;
+                    const isExpired = (Date.now() - createdTime) > oneDay;
+
+                    if (isExpired) {
+                        // JIKA EXPIRED: Hapus sesi, tolak akses
                         localStorage.removeItem('utbk_student_token');
+                        alert("Token ini sudah KADALUARSA (Lebih dari 24 Jam).");
+                        return;
                     }
+
+                    // JIKA TIDAK EXPIRED, LANJUTKAN
+                    setStudentName(data.studentName);
+                    setCurrentTokenCode(savedToken);
+                    
+                    // STATUS: USED (SUDAH SELESAI UJIAN) -> KE DASHBOARD HASIL
+                    if (data.status === 'used' && data.score !== undefined) {
+                        setAnswers(data.answers || {});
+                        if (data.historyQuestions) setQuestionOrder(data.historyQuestions); // LOAD SOAL LAMA
+                        // Pastikan testOrder terisi untuk navigasi review
+                        if (testOrder.length === 0) setTestOrder(SUBTESTS); 
+                        setScreen('result');
+                    } 
+                    // STATUS: ACTIVE (SEDANG UJIAN TAPI REFRESH) -> KEMBALIKAN KE LANDING/COUNTDOWN
+                    // (Opsional: Bisa dibuat resume ujian, tapi untuk keamanan kita reset ke landing dulu)
+                } else {
+                    localStorage.removeItem('utbk_student_token');
                 }
             } catch (error) {
                 console.error(error);
@@ -106,6 +122,7 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
+  // --- SECURITY ---
   useEffect(() => {
     const forceSubmit = (reason) => {
         if (screenRef.current === 'test' || screenRef.current === 'countdown') {
@@ -152,6 +169,7 @@ const UTBKStudentApp = () => {
     };
   }, []); 
 
+  // --- LOAD BANK SOAL ---
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -168,11 +186,16 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
+  // --- LOGIC FINISH EXAM & SAVE TO DB ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
+            // Cek apakah data sudah diload (jika login ulang) agar tidak overwrite
+            // Kita hanya save jika ini adalah sesi ujian baru (violation terjadi atau waktu habis)
+            // Namun logic di bawah aman karena updateDoc hanya merge fields.
+            
             const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
@@ -182,14 +205,20 @@ const UTBKStudentApp = () => {
 
             try {
                 const tokenRef = doc(db, 'tokens', currentTokenCode);
+                
+                // DATA YANG DISIMPAN: Skor, Jawaban, DAN Soal yang didapat (History)
+                // Agar saat login lagi, soalnya sama persis.
                 await updateDoc(tokenRef, { 
+                    status: 'used', // TANDAI SUDAH DIGUNAKAN
                     score: totalScore,
                     finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
-                    answers: answers
+                    answers: answers,
+                    historyQuestions: questionOrder // SIMPAN SOAL YANG DIPILIH KE TOKEN
                 });
 
+                // FETCH LEADERBOARD
                 const q = query(
                     collection(db, 'tokens'),
                     where('score', '!=', null),
@@ -220,26 +249,81 @@ const UTBKStudentApp = () => {
                 setMyRank(userRank);
             } catch (error) { console.error("Leaderboard Error:", error); }
         };
-        finishExamProcess();
+        
+        // Jalankan hanya jika kita memiliki data ujian (bukan sekedar view result)
+        // Indikator sederhana: jika globalStartTime ada, berarti baru selesai ujian.
+        if (globalStartTime) {
+            finishExamProcess();
+        } else {
+            // Jika login ulang (hanya view), load leaderboard saja
+            const loadOnlyLeaderboard = async () => {
+                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
+                 const snap = await getDocs(q);
+                 const top10 = [];
+                 let rank = 1; let userRank = null;
+                 snap.forEach(d => {
+                     const dt = d.data();
+                     top10.push({ rank, name: dt.studentName, school: dt.studentSchool||'-', score: dt.score, timeLeft: dt.finalTimeLeft });
+                     if (dt.tokenCode === currentTokenCode) userRank = rank;
+                     rank++;
+                 });
+                 setLeaderboard(top10);
+                 setMyRank(userRank);
+            };
+            loadOnlyLeaderboard();
+        }
     }
   }, [screen]); 
 
+  // --- LOGIC LOGIN TOKEN (DIPERBARUI) ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
     const docRef = doc(db, 'tokens', tokenCode);
+    
     try {
       const docSnap = await getDoc(docRef);
       if (!docSnap.exists()) { alert('Token TIDAK DITEMUKAN.'); return; }
+      
       const data = docSnap.data();
-      if ((Date.now() - new Date(data.createdAt).getTime()) > 24 * 60 * 60 * 1000) { alert('Token EXPIRED.'); return; }
-      if (data.status === 'used') { alert(`Halo ${data.studentName}, token SUDAH TERPAKAI.`); return; }
+      
+      // 1. CEK EXPIRATION (Global check)
+      const createdTime = new Date(data.createdAt).getTime();
+      const oneDay = 24 * 60 * 60 * 1000;
+      if ((Date.now() - createdTime) > oneDay) { 
+          alert('Token SUDAH KADALUARSA (Expired > 24 Jam). Tidak bisa diakses lagi.'); 
+          return; 
+      }
+
+      // 2. CEK STATUS
+      if (data.status === 'used') {
+          // JIKA SUDAH DIPAKAI -> LANGSUNG KE DASHBOARD HASIL (LOAD DATA LAMA)
+          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini. Mengalihkan ke Halaman Hasil...`);
+          
+          localStorage.setItem('utbk_student_token', tokenCode);
+          setStudentName(data.studentName);
+          setCurrentTokenCode(tokenCode);
+          setAnswers(data.answers || {});
+          
+          if (data.historyQuestions) {
+              setQuestionOrder(data.historyQuestions);
+          }
+          if (testOrder.length === 0) setTestOrder(SUBTESTS); // Pastikan struktur subtes ada
+          
+          setScreen('result');
+          return;
+      }
+
+      // 3. JIKA STATUS ACTIVE -> MULAI UJIAN BARU
       if (confirm(`Login sebagai ${data.studentName}?`)) {
-        await updateDoc(docRef, { status: 'used', loginAt: new Date().toISOString() });
-        localStorage.setItem('utbk_student_token', tokenCode); 
+        // Update login time jika belum ada, tapi biarkan status tetap active sampai selesai
+        await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
+        
+        localStorage.setItem('utbk_student_token', tokenCode);
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
+        
         try { await document.documentElement.requestFullscreen(); } catch (err) { console.log("Fullscreen blocked"); }
         setCountdownTime(10); 
         setScreen('countdown'); 
@@ -253,11 +337,14 @@ const UTBKStudentApp = () => {
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     
-    const shuffled = [...SUBTESTS].sort(() => Math.random() - 0.5);
-    setTestOrder(shuffled);
+    // --- RANDOMISASI SOAL SAAT START ---
+    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
+    setTestOrder(shuffledSubtests);
+    
     const qOrder = {};
-    shuffled.forEach((subtest) => {
+    shuffledSubtests.forEach((subtest) => {
       const bank = [...(bankSoal[subtest.id] || [])];
+      // Acak soal dan ambil sesuai jumlah
       qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
     });
     setQuestionOrder(qOrder);
@@ -267,7 +354,7 @@ const UTBKStudentApp = () => {
     setAnswers({}); 
     setDoubtful({}); 
     
-    const durationSec = shuffled[0].time * 60;
+    const durationSec = shuffledSubtests[0].time * 60;
     const targetTime = Date.now() + (durationSec * 1000);
     setEndTime(targetTime);
     setTimeLeft(durationSec);
@@ -275,6 +362,7 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
+  // --- TIMER & NAVIGATION LOGIC (SAMA) ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -328,11 +416,17 @@ const UTBKStudentApp = () => {
       const cc = {}; 
       let tot = 0; 
       
-      testOrder.forEach(s => { 
+      // Gunakan testOrder yang ada (bisa dari session restore atau baru)
+      // Jika testOrder kosong (kasus langka), pakai default SUBTESTS
+      const orderToUse = testOrder.length > 0 ? testOrder : SUBTESTS;
+
+      orderToUse.forEach(s => { 
           let sub = 0; 
           let correctCount = 0; 
+          
+          const questions = questionOrder[s.id] || [];
 
-          questionOrder[s.id].forEach((q, i) => { 
+          questions.forEach((q, i) => { 
               const k = `${s.id}_${i}`; 
               const ans = answers[k];
               
