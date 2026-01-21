@@ -52,7 +52,6 @@ const UTBKStudentApp = () => {
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
-        
         if (savedToken) {
             try {
                 const docRef = doc(db, 'tokens', savedToken);
@@ -68,6 +67,7 @@ const UTBKStudentApp = () => {
                         setCurrentTokenCode(savedToken);
                         
                         if (data.score !== undefined && data.score !== null) {
+                            if (data.answers) setAnswers(data.answers);
                             setScreen('result');
                         } 
                     } else {
@@ -79,7 +79,6 @@ const UTBKStudentApp = () => {
             }
         }
     };
-    
     restoreSession();
   }, []);
 
@@ -109,7 +108,7 @@ const UTBKStudentApp = () => {
 
   useEffect(() => {
     const forceSubmit = (reason) => {
-        if (screenRef.current === 'test') {
+        if (screenRef.current === 'test' || screenRef.current === 'countdown') {
             setViolationReason(reason);
             setScreen('result');
             if (document.fullscreenElement) {
@@ -119,8 +118,8 @@ const UTBKStudentApp = () => {
     };
 
     const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
-    const handleFullscreenChange = () => { if (!document.fullscreenElement && screenRef.current === 'test') forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
-    const handleBlur = () => { if (screenRef.current === 'test') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
+    const handleFullscreenChange = () => { if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown')) forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
+    const handleBlur = () => { if (screenRef.current === 'test' || screenRef.current === 'countdown') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
 
     const handleKeyDown = (e) => {
       if (
@@ -187,7 +186,8 @@ const UTBKStudentApp = () => {
                     score: totalScore,
                     finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
-                    violation: violationReason || null 
+                    violation: violationReason || null,
+                    answers: answers
                 });
 
                 const q = query(
@@ -236,7 +236,7 @@ const UTBKStudentApp = () => {
       if (data.status === 'used') { alert(`Halo ${data.studentName}, token SUDAH TERPAKAI.`); return; }
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { status: 'used', loginAt: new Date().toISOString() });
-        localStorage.setItem('utbk_student_token', tokenCode); 
+        localStorage.setItem('utbk_student_token', tokenCode);
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
