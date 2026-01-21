@@ -34,7 +34,8 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
-  const [showReview, setShowReview] = useState(false); // STATE BARU: REVIEW
+  const [showReview, setShowReview] = useState(false);
+  const [reviewSubtestId, setReviewSubtestId] = useState('pu');
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -349,73 +350,93 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- COMPONENT REVIEW SOAL (TANPA LOAD DATABASE) ---
   const ReviewSection = () => {
-    return (
-        <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-bottom-10 duration-500">
-            {testOrder.map((subtest) => (
-                <div key={subtest.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
-                    <div className="bg-indigo-50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
-                        <h3 className="font-bold text-indigo-900 text-lg">{subtest.name}</h3>
-                        <span className="text-xs font-bold bg-indigo-200 text-indigo-800 px-3 py-1 rounded-full">
-                            {questionOrder[subtest.id].length} Soal
-                        </span>
-                    </div>
-                    <div className="p-6 space-y-6">
-                        {questionOrder[subtest.id].map((q, idx) => {
-                            const key = `${subtest.id}_${idx}`;
-                            const userAnswer = answers[key];
-                            const correct = q.correct;
-                            
-                            // Logika Cek Benar/Salah (Sama seperti CalculateScore)
-                            let isCorrect = false;
-                            if (q.type === 'pilihan_majemuk') {
-                                if (Array.isArray(userAnswer) && Array.isArray(correct)) {
-                                    isCorrect = [...userAnswer].sort().join(',') === [...correct].sort().join(',');
-                                }
-                            } else if (q.type === 'isian') {
-                                isCorrect = userAnswer?.toString().toLowerCase().trim() === correct.toString().toLowerCase().trim();
-                            } else {
-                                isCorrect = userAnswer === correct;
-                            }
-                            
-                            const isSkipped = !userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0);
+    const currentQuestions = questionOrder[reviewSubtestId] || [];
 
-                            return (
-                                <div key={idx} className={`p-4 rounded-lg border-2 ${isCorrect ? 'border-green-100 bg-green-50' : isSkipped ? 'border-orange-100 bg-orange-50' : 'border-red-100 bg-red-50'}`}>
-                                    <div className="flex gap-3 mb-3">
-                                        <span className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full font-bold text-sm ${isCorrect ? 'bg-green-200 text-green-800' : isSkipped ? 'bg-orange-200 text-orange-800' : 'bg-red-200 text-red-800'}`}>
-                                            {idx + 1}
+    return (
+        <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-10 duration-500">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Subtes untuk Direview:</label>
+                <select 
+                    value={reviewSubtestId} 
+                    onChange={(e) => setReviewSubtestId(e.target.value)} 
+                    className="w-full p-3 border rounded-lg bg-gray-50 font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-200"
+                >
+                    {SUBTESTS.map(s => (
+                        <option key={s.id} value={s.id}>{s.name} ({questionOrder[s.id]?.length || 0} Soal)</option>
+                    ))}
+                </select>
+            </div>
+
+            <div className="space-y-4">
+                {currentQuestions.map((q, idx) => {
+                    const key = `${reviewSubtestId}_${idx}`;
+                    const userAnswer = answers[key];
+                    const correct = q.correct;
+                    
+                    let isCorrect = false;
+                    if (q.type === 'pilihan_majemuk') {
+                        if (Array.isArray(userAnswer) && Array.isArray(correct)) {
+                            isCorrect = [...userAnswer].sort().join(',') === [...correct].sort().join(',');
+                        }
+                    } else if (q.type === 'isian') {
+                        isCorrect = userAnswer?.toString().toLowerCase().trim() === correct.toString().toLowerCase().trim();
+                    } else {
+                        isCorrect = userAnswer === correct;
+                    }
+                    
+                    const isSkipped = !userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0);
+
+                    let correctContent = null;
+                    if (q.type === 'pilihan_ganda' && typeof correct === 'string') {
+                        const correctIndex = ['A','B','C','D','E'].indexOf(correct);
+                        if (correctIndex !== -1 && q.options && q.options[correctIndex]) {
+                            correctContent = q.options[correctIndex];
+                        }
+                    }
+
+                    return (
+                        <div key={idx} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
+                                <span className="font-bold text-gray-700 bg-white border border-gray-200 px-3 py-1 rounded text-sm">
+                                    Soal No. {idx + 1}
+                                </span>
+                                <span className={`text-xs font-bold px-2 py-1 rounded border ${isCorrect ? 'bg-green-100 text-green-700 border-green-200' : isSkipped ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
+                                    {isCorrect ? 'BENAR' : isSkipped ? 'KOSONG' : 'SALAH'}
+                                </span>
+                            </div>
+                            
+                            <div className="p-5">
+                                <div className="text-gray-800 text-sm leading-relaxed font-medium mb-4 text-left text-justify whitespace-pre-wrap">
+                                    <Latex>{q.question}</Latex>
+                                </div>
+                                {q.image && <img src={q.image} className="max-h-60 rounded-lg border mb-4 mx-auto" alt="Soal" />}
+                                
+                                <div className="space-y-2 text-sm">
+                                    <div className={`p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-100' : isSkipped ? 'bg-orange-50 border-orange-100' : 'bg-red-50 border-red-100'}`}>
+                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1">Jawaban Kamu:</span>
+                                        <span className="font-bold text-base">
+                                            {Array.isArray(userAnswer) ? userAnswer.join(', ') : (userAnswer || '-')}
                                         </span>
-                                        <div className="flex-1">
-                                            <div className="mb-2 text-gray-800 font-medium leading-relaxed">
-                                                <Latex>{q.question}</Latex>
-                                            </div>
-                                            {q.image && <img src={q.image} className="max-h-48 rounded-lg border mb-4" alt="Soal" />}
-                                            
-                                            {/* Area Jawaban */}
-                                            <div className="text-sm bg-white p-3 rounded border border-gray-200 space-y-1">
-                                                <div className="flex gap-2">
-                                                    <span className="font-bold text-gray-500 w-24">Jawabanmu:</span>
-                                                    <span className={`font-bold ${isCorrect ? 'text-green-600' : isSkipped ? 'text-orange-500' : 'text-red-600'}`}>
-                                                        {Array.isArray(userAnswer) ? userAnswer.join(', ') : (userAnswer || 'KOSONG')}
-                                                    </span>
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    <span className="font-bold text-gray-500 w-24">Kunci Benar:</span>
-                                                    <span className="font-bold text-indigo-600">
-                                                        {Array.isArray(correct) ? correct.join(', ') : correct}
-                                                    </span>
-                                                </div>
-                                            </div>
+                                    </div>
+                                    
+                                    <div className="p-3 rounded-lg border bg-blue-50 border-blue-100">
+                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1 text-blue-800">Kunci Jawaban:</span>
+                                        <div className="font-bold text-base text-blue-900 flex flex-col gap-1">
+                                            <span>{Array.isArray(correct) ? correct.join(', ') : correct}</span>
+                                            {correctContent && (
+                                                <span className="text-sm font-normal border-t border-blue-200 pt-1 mt-1">
+                                                    <Latex>{correctContent}</Latex>
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
-                            );
-                        })}
-                    </div>
-                </div>
-            ))}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
   };
@@ -551,7 +572,7 @@ const UTBKStudentApp = () => {
           
           <div className="mb-8">
             <div className="mb-2"><span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex w-fit items-center gap-1">{qType === 'pilihan_majemuk' ? <CheckSquare size={12}/> : qType === 'isian' ? <AlignLeft size={12}/> : <List size={12}/>} {qType.replace('_', ' ')}</span></div>
-            <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-justify"><Latex>{currentQ?.question}</Latex></div>
+            <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-left text-justify"><Latex>{currentQ?.question}</Latex></div>
             {currentQ?.image && (<div className="flex justify-center my-6"><img src={currentQ.image} alt="Soal Visual" className="max-w-full h-auto max-h-[400px] object-contain rounded-lg shadow-md border border-gray-100" onContextMenu={e=>e.preventDefault()} /></div>)}
           </div>
 
