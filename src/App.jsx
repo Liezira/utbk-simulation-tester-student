@@ -50,6 +50,40 @@ const UTBKStudentApp = () => {
   }, [screen]);
 
   useEffect(() => {
+    const restoreSession = async () => {
+        const savedToken = localStorage.getItem('utbk_student_token');
+        
+        if (savedToken) {
+            try {
+                const docRef = doc(db, 'tokens', savedToken);
+                const docSnap = await getDoc(docRef);
+                
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const loginTime = new Date(data.loginAt || data.createdAt).getTime();
+                    const oneDay = 24 * 60 * 60 * 1000;
+                    
+                    if (Date.now() - loginTime < oneDay) {
+                        setStudentName(data.studentName);
+                        setCurrentTokenCode(savedToken);
+                        
+                        if (data.score !== undefined && data.score !== null) {
+                            setScreen('result');
+                        } 
+                    } else {
+                        localStorage.removeItem('utbk_student_token');
+                    }
+                }
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    };
+    
+    restoreSession();
+  }, []);
+
+  useEffect(() => {
     const initAppCheck = async () => {
         try {
             const siteKey = import.meta.env.VITE_RECAPTCHA;
@@ -202,6 +236,7 @@ const UTBKStudentApp = () => {
       if (data.status === 'used') { alert(`Halo ${data.studentName}, token SUDAH TERPAKAI.`); return; }
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { status: 'used', loginAt: new Date().toISOString() });
+        localStorage.setItem('utbk_student_token', tokenCode); 
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
@@ -410,7 +445,7 @@ const UTBKStudentApp = () => {
                                 <div className="text-gray-800 text-sm leading-relaxed font-medium mb-4 text-left text-justify whitespace-pre-wrap">
                                     <Latex>{q.question}</Latex>
                                 </div>
-                                {q.image && <img src={q.image} className="max-h-60 rounded-lg border mb-4 mx-auto" alt="Soal" />}
+                                {q.image && <img src={q.image} className="w-full h-auto my-6 select-none object-contain" alt="Soal" />}
                                 
                                 <div className="space-y-2 text-sm">
                                     <div className={`p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-100' : isSkipped ? 'bg-orange-50 border-orange-100' : 'bg-red-50 border-red-100'}`}>
@@ -548,7 +583,7 @@ const UTBKStudentApp = () => {
 
             {showReview && <ReviewSection />}
 
-            <button onClick={() => { document.exitFullscreen().catch(()=>{}); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
+            <button onClick={() => { document.exitFullscreen().catch(()=>{}); localStorage.removeItem('utbk_student_token'); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
             <FooterLiezira />
           </div>
         </div>
@@ -573,7 +608,7 @@ const UTBKStudentApp = () => {
           <div className="mb-8">
             <div className="mb-2"><span className="text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded bg-indigo-50 text-indigo-600 border border-indigo-100 flex w-fit items-center gap-1">{qType === 'pilihan_majemuk' ? <CheckSquare size={12}/> : qType === 'isian' ? <AlignLeft size={12}/> : <List size={12}/>} {qType.replace('_', ' ')}</span></div>
             <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-left text-justify"><Latex>{currentQ?.question}</Latex></div>
-            {currentQ?.image && (<div className="flex justify-center my-6"><img src={currentQ.image} alt="Soal Visual" className="max-w-full h-auto max-h-[400px] object-contain rounded-lg shadow-md border border-gray-100" onContextMenu={e=>e.preventDefault()} /></div>)}
+            {currentQ?.image && (<div className="flex justify-center my-6"><img src={currentQ.image} alt="Soal Visual" className="w-full h-auto my-6 select-none object-contain" onContextMenu={e=>e.preventDefault()} /></div>)}
           </div>
 
           <div className="mb-8">
