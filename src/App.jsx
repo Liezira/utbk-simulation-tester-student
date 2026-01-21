@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, ChevronDown, ChevronUp } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -34,6 +34,7 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
+  const [showReview, setShowReview] = useState(false); // STATE BARU: REVIEW
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -348,6 +349,77 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
+  // --- COMPONENT REVIEW SOAL (TANPA LOAD DATABASE) ---
+  const ReviewSection = () => {
+    return (
+        <div className="mt-8 space-y-8 animate-in fade-in slide-in-from-bottom-10 duration-500">
+            {testOrder.map((subtest) => (
+                <div key={subtest.id} className="bg-white rounded-xl shadow-md overflow-hidden border border-gray-100">
+                    <div className="bg-indigo-50 px-6 py-4 border-b border-indigo-100 flex justify-between items-center">
+                        <h3 className="font-bold text-indigo-900 text-lg">{subtest.name}</h3>
+                        <span className="text-xs font-bold bg-indigo-200 text-indigo-800 px-3 py-1 rounded-full">
+                            {questionOrder[subtest.id].length} Soal
+                        </span>
+                    </div>
+                    <div className="p-6 space-y-6">
+                        {questionOrder[subtest.id].map((q, idx) => {
+                            const key = `${subtest.id}_${idx}`;
+                            const userAnswer = answers[key];
+                            const correct = q.correct;
+                            
+                            // Logika Cek Benar/Salah (Sama seperti CalculateScore)
+                            let isCorrect = false;
+                            if (q.type === 'pilihan_majemuk') {
+                                if (Array.isArray(userAnswer) && Array.isArray(correct)) {
+                                    isCorrect = [...userAnswer].sort().join(',') === [...correct].sort().join(',');
+                                }
+                            } else if (q.type === 'isian') {
+                                isCorrect = userAnswer?.toString().toLowerCase().trim() === correct.toString().toLowerCase().trim();
+                            } else {
+                                isCorrect = userAnswer === correct;
+                            }
+                            
+                            const isSkipped = !userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0);
+
+                            return (
+                                <div key={idx} className={`p-4 rounded-lg border-2 ${isCorrect ? 'border-green-100 bg-green-50' : isSkipped ? 'border-orange-100 bg-orange-50' : 'border-red-100 bg-red-50'}`}>
+                                    <div className="flex gap-3 mb-3">
+                                        <span className={`flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-full font-bold text-sm ${isCorrect ? 'bg-green-200 text-green-800' : isSkipped ? 'bg-orange-200 text-orange-800' : 'bg-red-200 text-red-800'}`}>
+                                            {idx + 1}
+                                        </span>
+                                        <div className="flex-1">
+                                            <div className="mb-2 text-gray-800 font-medium leading-relaxed">
+                                                <Latex>{q.question}</Latex>
+                                            </div>
+                                            {q.image && <img src={q.image} className="max-h-48 rounded-lg border mb-4" alt="Soal" />}
+                                            
+                                            {/* Area Jawaban */}
+                                            <div className="text-sm bg-white p-3 rounded border border-gray-200 space-y-1">
+                                                <div className="flex gap-2">
+                                                    <span className="font-bold text-gray-500 w-24">Jawabanmu:</span>
+                                                    <span className={`font-bold ${isCorrect ? 'text-green-600' : isSkipped ? 'text-orange-500' : 'text-red-600'}`}>
+                                                        {Array.isArray(userAnswer) ? userAnswer.join(', ') : (userAnswer || 'KOSONG')}
+                                                    </span>
+                                                </div>
+                                                <div className="flex gap-2">
+                                                    <span className="font-bold text-gray-500 w-24">Kunci Benar:</span>
+                                                    <span className="font-bold text-indigo-600">
+                                                        {Array.isArray(correct) ? correct.join(', ') : correct}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+  };
+
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
@@ -440,7 +512,24 @@ const UTBKStudentApp = () => {
             )}
             <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
           </div>
-          <div className="border-t pt-6"><button onClick={() => { document.exitFullscreen().catch(()=>{}); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full md:w-1/2 bg-indigo-600 text-white py-4 rounded-xl font-bold hover:bg-indigo-700 transition shadow-lg">Selesai / Logout</button><FooterLiezira /></div>
+
+          <div className="border-t pt-6 space-y-4">
+            <button 
+                onClick={() => setShowReview(!showReview)} 
+                className={`w-full py-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2 ${showReview ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+            >
+                {showReview ? (
+                    <>Tutup Pembahasan <ChevronUp size={20}/></>
+                ) : (
+                    <>Lihat Detail & Pembahasan <ChevronDown size={20}/></>
+                )}
+            </button>
+
+            {showReview && <ReviewSection />}
+
+            <button onClick={() => { document.exitFullscreen().catch(()=>{}); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
+            <FooterLiezira />
+          </div>
         </div>
       </div>
     );
