@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, Activity, TrendingUp, BookOpen, PieChart, Lightbulb, Target } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -7,21 +7,19 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
-// --- KONFIGURASI KELOMPOK SUBTEST ---
+// --- KONFIGURASI KELOMPOK SUBTEST (BARU) ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
     color: "bg-blue-500",
-    textColor: "text-blue-600",
-    desc: "Kemampuan kognitif, logika, dan pemahaman dasar."
+    text: "text-blue-600"
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
     color: "bg-orange-500",
-    textColor: "text-orange-600",
-    desc: "Kemampuan memahami bacaan kompleks dan matematika."
+    text: "text-orange-600"
   }
 };
 
@@ -52,6 +50,8 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
+  
+  // State Review dihapus (sesuai request: ganti analisis)
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -84,7 +84,7 @@ const UTBKStudentApp = () => {
                         setCurrentTokenCode(savedToken);
                         
                         if (data.status === 'used' && data.score !== undefined) {
-                            setAnswers(data.answers || {}); 
+                            setAnswers(data.answers || {});
                             if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
@@ -104,7 +104,9 @@ const UTBKStudentApp = () => {
         try {
             const siteKey = import.meta.env.VITE_RECAPTCHA;
             if (siteKey) {
-                if (typeof window !== 'undefined' && window.location.hostname === 'localhost') window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+                    window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+                }
                 const app = getApp(); 
                 initializeAppCheck(app, { provider: new ReCaptchaV3Provider(siteKey), isTokenAutoRefreshEnabled: true });
             }
@@ -133,7 +135,7 @@ const UTBKStudentApp = () => {
           (e.altKey && e.key === 'Tab') || (e.metaKey) || (e.ctrlKey && e.key === 'u')
       ) {
         e.preventDefault();
-        alert('⚠️ Tombol sistem dimatikan.');
+        alert('⚠️ PERINGATAN: Tombol Dilarang!');
       }
     };
 
@@ -154,6 +156,7 @@ const UTBKStudentApp = () => {
     };
   }, []); 
 
+  // --- LOAD BANK SOAL ---
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -170,18 +173,7 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  useEffect(() => {
-      if (Object.keys(bankSoal).length > 0 && testOrder.length === 0) {
-          setTestOrder(SUBTESTS); 
-          const qOrder = {};
-          SUBTESTS.forEach((subtest) => {
-              const bank = bankSoal[subtest.id] || [];
-              qOrder[subtest.id] = bank.slice(0, subtest.questions);
-          });
-          setQuestionOrder(qOrder);
-      }
-  }, [bankSoal, testOrder]);
-
+  // --- FINISH EXAM ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
@@ -244,6 +236,7 @@ const UTBKStudentApp = () => {
     }
   }, [screen]); 
 
+  // --- TOKEN LOGIN ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -261,15 +254,13 @@ const UTBKStudentApp = () => {
       }
 
       if (data.status === 'used') {
-          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini. Mengalihkan ke Halaman Hasil...`);
+          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini.`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
-          
           setAnswers(data.answers || {});
           if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
           if (testOrder.length === 0) setTestOrder(SUBTESTS); 
-          
           setScreen('result');
           return;
       }
@@ -293,6 +284,7 @@ const UTBKStudentApp = () => {
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     
+    // Logic Acak Soal (ORIGINAL)
     const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
     setTestOrder(shuffledSubtests);
     
@@ -416,7 +408,7 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- GROWTH DASHBOARD COMPONENT (NEW) ---
+  // --- KOMPONEN ANALISIS EKSKLUSIF (BARU) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore } = calculateScore();
       
@@ -425,7 +417,7 @@ const UTBKStudentApp = () => {
       const litTotal = SUBTEST_GROUPS.LITERASI.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
       
       // Percentage for Pie Chart
-      const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; // Prevent div by zero
+      const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; 
       const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
       const litPercent = 100 - tpsPercent;
 
@@ -436,7 +428,8 @@ const UTBKStudentApp = () => {
           ? "Kamu cenderung lebih kuat di analisis bacaan. Tingkatkan latihan pola logika, matematika dasar, dan kecepatan berhitung untuk menyeimbangkan skor TPS."
           : "Logika kamu sangat kuat! Namun, perluas perbendaharaan kata (vocabulary) dan biasakan membaca teks panjang (skimming) untuk mendongkrak nilai Literasi.";
 
-      const maxScoreSubtest = Object.keys(scores).length > 0 ? Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b) : 'pu';
+      const subtestKeys = Object.keys(scores);
+      const maxScoreSubtest = subtestKeys.length > 0 ? subtestKeys.reduce((a, b) => scores[a] > scores[b] ? a : b) : 'pu';
       const maxSubtestName = SUBTESTS.find(s => s.id === maxScoreSubtest)?.name || "Penalaran Umum";
 
       let motivation = "";
@@ -466,7 +459,7 @@ const UTBKStudentApp = () => {
                   </div>
               </div>
 
-              {/* PIE CHART SECTION */}
+              {/* PIE CHART & MITIGATION */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {/* Visualisasi Donut Chart (CSS Conic) */}
                   <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center justify-center md:col-span-1">
@@ -539,7 +532,6 @@ const UTBKStudentApp = () => {
       );
   };
 
-  // --- RENDER ---
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
@@ -556,14 +548,11 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Latihan Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
-            <ul className="list-disc pl-4 space-y-1 font-semibold">
-                <li>DILARANG PINDAH TAB / KELUAR FULLSCREEN.</li>
-                <li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li>
-            </ul>
+            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG KELUAR FULLSCREEN.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
           </div>
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
             <label className="block text-indigo-900 font-bold mb-2 text-sm flex items-center justify-center gap-2"><Ticket size={18}/> Kode Token:</label>
@@ -614,9 +603,10 @@ const UTBKStudentApp = () => {
             </div>
           )}
           
+          {/* FITUR ANALISIS (PENGGANTI REVIEW) */}
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
