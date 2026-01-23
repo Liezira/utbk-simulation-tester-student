@@ -7,20 +7,17 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
+// --- KONFIGURASI SESUAI GAMBAR EKSKLUSIF ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "bg-blue-600",
-    bg: "bg-blue-50",
-    text: "text-blue-700"
+    color: "#3b82f6", // Blue
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
-    color: "bg-violet-600",
-    bg: "bg-violet-50",
-    text: "text-violet-700"
+    color: "#8b5cf6", // Violet
   }
 };
 
@@ -115,7 +112,7 @@ const UTBKStudentApp = () => {
 
   useEffect(() => {
     const forceSubmit = (reason) => {
-        if (screenRef.current === 'test' || screenRef.current === 'countdown') {
+        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
             setViolationReason(reason);
             setScreen('result');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -123,8 +120,16 @@ const UTBKStudentApp = () => {
     };
 
     const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
-    const handleFullscreenChange = () => { if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown')) forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
-    const handleBlur = () => { if (screenRef.current === 'test' || screenRef.current === 'countdown') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
+    const handleFullscreenChange = () => { 
+        if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break')) {
+            forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); 
+        }
+    };
+    const handleBlur = () => { 
+        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
+            forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); 
+        }
+    };
 
     const handleKeyDown = (e) => {
       if (
@@ -174,7 +179,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            const { totalScore, correctCounts } = calculateScore();
+            const { totalScore } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
@@ -401,6 +406,7 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
+  // --- DASHBOARD VISUAL (SAMA PERSIS IMAGE 3 & 4) DENGAN LOGIC WAKTU DIPERBAIKI ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -411,97 +417,38 @@ const UTBKStudentApp = () => {
       const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
       const litPercent = 100 - tpsPercent;
 
+      // LOGIC REKOMENDASI
       const isWeakTPS = tpsTotal < litTotal;
       const mitigationText = isWeakTPS 
           ? "Skor TPS kamu tertinggal. Ini menandakan perlunya penguatan di logika dasar, pola bilangan, dan pemahaman frasa. Fokuskan latihan pada soal-soal penalaran analitik."
           : "Logika kamu kuat, namun aspek Literasi perlu didongkrak. Tingkatkan kecepatan membaca (skimming) dan perbanyak latihan soal bacaan panjang bahasa Indonesia & Inggris.";
 
-      let motivation = "Terus berjuang!";
-      let badgeColor = "bg-gray-500";
-      let prediction = "Perlu Peningkatan";
-
-      if (totalScore > 720) {
-          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
-          badgeColor = "bg-emerald-500";
-          prediction = "Sangat Kompetitif";
-      } else if (totalScore > 600) {
-          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju Top Tier.";
-          badgeColor = "bg-blue-500";
-          prediction = "Kompetitif";
-      } else if (totalScore > 500) {
-          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
-          badgeColor = "bg-yellow-500";
-          prediction = "Cukup Baik";
-      } else {
-          motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah dan lipatgandakan latihan.";
-          badgeColor = "bg-orange-500";
-          prediction = "Butuh Latihan Ekstra";
-      }
-
-      const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
-      const allocatedSeconds = totalAllocatedMinutes * 60;
-      const timeSpent = allocatedSeconds - timeLeft; 
-      const avgTimePerQuestion = timeSpent / totalQuestionsCount;
-
-      let speedAnalysisTitle = "Tempo Ideal";
-      let speedAnalysisDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
-
+      // LOGIC WAKTU (BARU - GLOBAL TIME)
+      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0); // 155
+      const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0); // 195
+      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
+      
+      // Time Spent = Alokasi Total - Sisa Waktu (Estimasi sederhana untuk tampilan result)
+      const timeSpentSeconds = totalAllocatedSeconds - timeLeft;
+      
+      // Rata-rata per soal (Real Time)
+      const avgTimePerQuestion = timeSpentSeconds / totalQuestionsCount;
+      
+      let speedStatus = "Tempo Ideal";
+      let speedDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
+      
       if (avgTimePerQuestion < 45) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Terburu-buru (Rushing)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal. Kamu mengerjakan terlalu cepat sehingga banyak kesalahan. Teliti lagi.`;
-          } else {
-              speedAnalysisTitle = "Sangat Efisien (Mastery)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal dengan akurasi tinggi. Kamu sangat menguasai materi ini.`;
-          }
-      } else if (avgTimePerQuestion > 180) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Stuck (Terlalu Lama)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion / 60)} menit/soal. Jangan terpaku pada soal sulit terlalu lama.`;
-          } else {
-              speedAnalysisTitle = "Deep Thinker";
-              speedAnalysisDesc = "Kamu butuh waktu lama tapi hasilnya akurat. Coba latih kecepatan agar semua soal terkejar.";
-          }
+          if (totalScore < 500) { speedStatus = "Terburu-buru"; speedDesc = "Kamu terlalu cepat sehingga kurang teliti."; }
+          else { speedStatus = "Sangat Efisien"; speedDesc = "Kecepatan tinggi dengan akurasi mantap!"; }
+      } else if (avgTimePerQuestion > 120) {
+          speedStatus = "Terlalu Lambat"; speedDesc = "Hati-hati kehabisan waktu di soal sulit.";
       }
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
-                  <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
-                  
-                  <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-8">
-                      <div className="text-center lg:text-left flex-1 space-y-4">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
-                              <span className={`w-2 h-2 rounded-full ${badgeColor} shadow-[0_0_10px_currentColor]`}></span>
-                              <span className="text-xs font-bold uppercase tracking-widest text-indigo-200">Status: {prediction}</span>
-                          </div>
-                          
-                          <h2 className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">
-                              {motivation}
-                          </h2>
-                          <p className="text-indigo-200 text-sm md:text-base max-w-xl opacity-90">
-                              Hasil ini adalah cerminan pemahamanmu saat ini. Gunakan data di bawah untuk strategi belajar selanjutnya.
-                          </p>
-                      </div>
-
-                      <div className="relative group">
-                          <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-20 rounded-full group-hover:opacity-30 transition duration-1000"></div>
-                          <div className="bg-white/5 p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[240px] relative z-10">
-                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Total Skor Akhir</span>
-                              <div className="text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
-                                  {totalScore}
-                              </div>
-                              <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">
-                                  Analisis AI Terverifikasi
-                              </div>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* KIRI: DONUT CHART */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                       <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                           <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
@@ -509,11 +456,11 @@ const UTBKStudentApp = () => {
                       
                       <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
                           <div className="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
-                               style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
+                               style={{ background: `conic-gradient(#7c3aed 0% ${litPercent}%, #2563eb ${litPercent}% 100%)` }}>
                               <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
-                                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
-                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
-                                      {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
+                                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">DOMINASI</span>
+                                  <span className={`text-xl font-black ${litPercent > tpsPercent ? 'text-violet-600' : 'text-blue-600'}`}>
+                                      {litPercent > tpsPercent ? 'LITERASI' : 'TPS'}
                                   </span>
                               </div>
                           </div>
@@ -521,20 +468,19 @@ const UTBKStudentApp = () => {
                           <div className="space-y-4 w-full max-w-xs">
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-indigo-600 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-indigo-600 mt-1">{tpsTotal} Poin</div>
+                                  <div className="text-right text-xs font-mono font-bold text-blue-600 mt-1">{tpsTotal} Poin</div>
                               </div>
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-violet-600 rounded-full"></div></div>
                                   <div className="text-right text-xs font-mono font-bold text-violet-600 mt-1">{litTotal} Poin</div>
                               </div>
                           </div>
                       </div>
                   </div>
 
+                  {/* KANAN: REKOMENDASI & TEMPO */}
                   <div className="flex flex-col gap-6">
-                      <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
+                      <div className="bg-orange-50 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
                           <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
                               <Lightbulb size={24}/>
                           </div>
@@ -552,8 +498,8 @@ const UTBKStudentApp = () => {
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
                               <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">{speedAnalysisTitle}</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedAnalysisDesc}</p>
+                                  <h4 className="font-bold text-slate-700 text-sm">{speedStatus}</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedDesc}</p>
                               </div>
                           </div>
                           <div className="text-right">
@@ -564,6 +510,7 @@ const UTBKStudentApp = () => {
                   </div>
               </div>
 
+              {/* RINCIAN PERFORMA (SAMA SEPERTI GAMBAR) */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
@@ -577,11 +524,10 @@ const UTBKStudentApp = () => {
                           const accuracy = Math.round((correct / totalQ) * 100);
                           
                           let colorClass = "bg-slate-400";
-                          let textClass = "text-slate-600";
-                          if(accuracy >= 75) { colorClass = "bg-emerald-500"; textClass="text-emerald-600"; }
-                          else if(accuracy >= 50) { colorClass = "bg-blue-500"; textClass="text-blue-600"; }
-                          else if(accuracy >= 30) { colorClass = "bg-yellow-500"; textClass="text-yellow-600"; }
-                          else { colorClass = "bg-red-500"; textClass="text-red-600"; }
+                          if(accuracy >= 75) { colorClass = "bg-emerald-500"; }
+                          else if(accuracy >= 50) { colorClass = "bg-blue-500"; }
+                          else if(accuracy >= 30) { colorClass = "bg-yellow-500"; }
+                          else { colorClass = "bg-red-500"; }
 
                           return (
                               <div key={s.id} className="p-5 hover:bg-slate-50 transition group">
@@ -594,12 +540,10 @@ const UTBKStudentApp = () => {
                                               <h5 className="font-bold text-slate-800 text-sm md:text-base">{s.name}</h5>
                                               <div className="flex items-center gap-3 mt-1">
                                                   <span className="text-xs font-medium text-slate-500">
-                                                      Benar: <strong className={textClass}>{correct}</strong> / {totalQ} Soal
+                                                      Benar: <strong>{correct}</strong> / {totalQ} Soal
                                                   </span>
                                                   <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                                  <span className="text-xs text-slate-400">
-                                                      Akurasi Jawaban
-                                                  </span>
+                                                  <span className="text-xs text-slate-400">Akurasi Jawaban</span>
                                               </div>
                                           </div>
                                       </div>
@@ -610,14 +554,11 @@ const UTBKStudentApp = () => {
                                                   <span>Progress Nilai</span>
                                               </div>
                                               <div className="w-full bg-slate-100 rounded-full h-2">
-                                                  <div 
-                                                      className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
-                                                      style={{ width: `${Math.min(100, (score/250)*100)}%` }}
-                                                  ></div>
+                                                  <div className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} style={{ width: `${Math.min(100, Math.abs(score/3))}%` }}></div>
                                               </div>
                                           </div>
                                           <div className="text-right min-w-[60px]">
-                                              <span className="block text-[10px] uppercase font-bold text-slate-400">Skor</span>
+                                              <span className="block text-[10px] uppercase font-bold text-slate-400">SKOR</span>
                                               <span className="text-xl font-black text-slate-800">{score}</span>
                                           </div>
                                       </div>
@@ -694,8 +635,23 @@ const UTBKStudentApp = () => {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
-          <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
-          <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
+          
+          <div className="bg-gradient-to-r from-indigo-800 to-indigo-600 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden mb-8">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-20 -mt-20"></div>
+              <div className="text-center md:text-left z-10">
+                  <div className="flex items-center gap-2 mb-2 justify-center md:justify-start opacity-80"><Lightbulb size={18}/> <span className="text-xs font-bold uppercase tracking-widest">Hasil Latihan</span></div>
+                  <h2 className="text-2xl md:text-3xl font-bold mb-3 leading-tight">Teruslah Berlatih!</h2>
+                  <p className="text-indigo-200 text-sm md:text-base max-w-lg opacity-90">
+                      Hasil ini adalah cerminan pemahamanmu saat ini. Gunakan data di bawah untuk strategi belajar selanjutnya.
+                  </p>
+              </div>
+              <div className="bg-white/10 p-4 rounded-xl border border-white/20 backdrop-blur-sm text-center min-w-[150px]">
+                  <span className="text-xs uppercase tracking-widest opacity-80">Total Skor</span>
+                  <div className="text-5xl font-extrabold mt-1">{leaderboard.find(l => l.name === studentName)?.score || 0}</div>
+              </div>
+          </div>
+
+          <h1 className="text-3xl font-bold mb-2 text-indigo-900 hidden">Hasil Ujian</h1>
           {violationReason && (
             <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
                <div className="flex items-center justify-center gap-2 text-lg"><ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS</div>
@@ -705,15 +661,7 @@ const UTBKStudentApp = () => {
           
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
-            <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
-            {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
-                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
-            )}
-            <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
-          </div>
-
-          <div className="border-t pt-6 space-y-4">
+          <div className="border-t pt-6 space-y-4 mt-8">
             <button onClick={() => { document.exitFullscreen().catch(()=>{}); localStorage.removeItem('utbk_student_token'); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
             <FooterLiezira />
           </div>
