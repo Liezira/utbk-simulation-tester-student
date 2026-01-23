@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -51,8 +51,6 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
-  const [showReview, setShowReview] = useState(false);
-  const [reviewSubtestId, setReviewSubtestId] = useState('pu');
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -115,11 +113,9 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- SECURITY UPDATE (FIXED) ---
   useEffect(() => {
     const forceSubmit = (reason) => {
-        // PENAMBAHAN: screenRef.current === 'break' agar saat jeda juga dipantau
-        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
+        if (screenRef.current === 'test' || screenRef.current === 'countdown') {
             setViolationReason(reason);
             setScreen('result');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -127,17 +123,8 @@ const UTBKStudentApp = () => {
     };
 
     const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
-    const handleFullscreenChange = () => { 
-        // Cek fullscreen pada 3 kondisi layar kritis
-        if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break')) {
-            forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); 
-        }
-    };
-    const handleBlur = () => { 
-        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
-            forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); 
-        }
-    };
+    const handleFullscreenChange = () => { if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown')) forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
+    const handleBlur = () => { if (screenRef.current === 'test' || screenRef.current === 'countdown') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
 
     const handleKeyDown = (e) => {
       if (
@@ -420,180 +407,229 @@ const UTBKStudentApp = () => {
       const tpsTotal = SUBTEST_GROUPS.TPS.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
       const litTotal = SUBTEST_GROUPS.LITERASI.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
       
-      const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
-      
-      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : (totalAllocatedSeconds * 1000);
-      const timeSpentSeconds = Math.floor(usedTimeMS / 1000);
-      const finalTimeSpent = Math.min(timeSpentSeconds, totalAllocatedSeconds);
+      const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; 
+      const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
+      const litPercent = 100 - tpsPercent;
 
-      const totalQuestions = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
-      const avgTimePerQuestion = finalTimeSpent / totalQuestions;
+      const isWeakTPS = tpsTotal < litTotal;
+      const mitigationText = isWeakTPS 
+          ? "Skor TPS kamu tertinggal. Ini menandakan perlunya penguatan di logika dasar, pola bilangan, dan pemahaman frasa. Fokuskan latihan pada soal-soal penalaran analitik."
+          : "Logika kamu kuat, namun aspek Literasi perlu didongkrak. Tingkatkan kecepatan membaca (skimming) dan perbanyak latihan soal bacaan panjang bahasa Indonesia & Inggris.";
 
-      let speedAnalysis = "Normal (Stabil)";
-      let speedColor = "text-indigo-600";
+      let motivation = "Terus berjuang!";
+      let badgeColor = "bg-gray-500";
+      let prediction = "Perlu Peningkatan";
 
-      if (avgTimePerQuestion < 45) {
-          if (totalScore < 500) { speedAnalysis = "Terburu-buru (Kurang Teliti)"; speedColor = "text-red-600"; }
-          else { speedAnalysis = "Sangat Efisien (Cepat & Tepat)"; speedColor = "text-green-600"; }
-      } else if (avgTimePerQuestion > 180) {
-          speedAnalysis = "Lambat (Terlalu Lama)"; speedColor = "text-orange-600";
+      if (totalScore > 720) {
+          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
+          badgeColor = "bg-emerald-500";
+          prediction = "Sangat Kompetitif";
+      } else if (totalScore > 600) {
+          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju Top Tier.";
+          badgeColor = "bg-blue-500";
+          prediction = "Kompetitif";
+      } else if (totalScore > 500) {
+          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
+          badgeColor = "bg-yellow-500";
+          prediction = "Cukup Baik";
+      } else {
+          motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah dan lipatgandakan latihan.";
+          badgeColor = "bg-orange-500";
+          prediction = "Butuh Latihan Ekstra";
       }
 
-      let motivation = "Terus Semangat!";
-      if(totalScore > 700) motivation = "Sangat Memuaskan! Pertahankan.";
-      else if(totalScore > 500) motivation = "Cukup Baik, tingkatkan lagi.";
-      else motivation = "Perlu banyak latihan lagi.";
+      const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
+      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
+      const allocatedSeconds = totalAllocatedMinutes * 60;
+      const timeSpent = allocatedSeconds - timeLeft; 
+      const avgTimePerQuestion = timeSpent / totalQuestionsCount;
+
+      let speedAnalysisTitle = "Tempo Ideal";
+      let speedAnalysisDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
+
+      if (avgTimePerQuestion < 45) {
+          if (totalScore < 500) {
+              speedAnalysisTitle = "Terburu-buru (Rushing)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal. Kamu mengerjakan terlalu cepat sehingga banyak kesalahan. Teliti lagi.`;
+          } else {
+              speedAnalysisTitle = "Sangat Efisien (Mastery)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal dengan akurasi tinggi. Kamu sangat menguasai materi ini.`;
+          }
+      } else if (avgTimePerQuestion > 180) {
+          if (totalScore < 500) {
+              speedAnalysisTitle = "Stuck (Terlalu Lama)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion / 60)} menit/soal. Jangan terpaku pada soal sulit terlalu lama.`;
+          } else {
+              speedAnalysisTitle = "Deep Thinker";
+              speedAnalysisDesc = "Kamu butuh waktu lama tapi hasilnya akurat. Coba latih kecepatan agar semua soal terkejar.";
+          }
+      }
 
       return (
-          <div className="space-y-6 text-left">
-              <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-xl text-center shadow-sm">
-                  <h2 className="text-xl font-bold text-indigo-900 mb-2">Analisis Hasil Ujian</h2>
-                  <div className="text-5xl font-extrabold text-indigo-600 mb-2">{totalScore}</div>
-                  <p className="text-gray-500 font-medium mb-4">{motivation}</p>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
+              
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
+                  <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-indigo-100 pt-4 text-sm">
-                      <div className="bg-white p-2 rounded border border-indigo-100">
-                          <span className="block text-xs text-gray-400 font-bold uppercase">Dominasi</span>
-                          <span className="font-bold text-indigo-600">{tpsTotal > litTotal ? 'TPS' : 'LITERASI'}</span>
+                  <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-8">
+                      <div className="text-center lg:text-left flex-1 space-y-4">
+                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+                              <span className={`w-2 h-2 rounded-full ${badgeColor} shadow-[0_0_10px_currentColor]`}></span>
+                              <span className="text-xs font-bold uppercase tracking-widest text-indigo-200">Status: {prediction}</span>
+                          </div>
+                          
+                          <h2 className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">
+                              {motivation}
+                          </h2>
+                          <p className="text-indigo-200 text-sm md:text-base max-w-xl opacity-90">
+                              Hasil ini adalah cerminan pemahamanmu saat ini. Gunakan data di bawah untuk strategi belajar selanjutnya.
+                          </p>
                       </div>
-                      <div className="bg-white p-2 rounded border border-indigo-100">
-                          <span className="block text-xs text-gray-400 font-bold uppercase">Tempo Global</span>
-                          <span className={`font-bold ${speedColor}`}>{speedAnalysis}</span>
-                      </div>
-                      <div className="bg-white p-2 rounded border border-indigo-100">
-                          <span className="block text-xs text-gray-400 font-bold uppercase">Rata-rata Waktu</span>
-                          <span className="font-bold text-gray-700">~{Math.round(avgTimePerQuestion)} detik/soal</span>
+
+                      <div className="relative group">
+                          <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-20 rounded-full group-hover:opacity-30 transition duration-1000"></div>
+                          <div className="bg-white/5 p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[240px] relative z-10">
+                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Total Skor Akhir</span>
+                              <div className="text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
+                                  {totalScore}
+                              </div>
+                              <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">
+                                  Analisis AI Terverifikasi
+                              </div>
+                          </div>
                       </div>
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {SUBTESTS.map(s => {
-                      const score = scores[s.id] || 0;
-                      const correct = correctCounts[s.id] || 0;
-                      const total = s.questions;
-                      const percent = Math.round((correct/total)*100);
-                      const isTPS = SUBTEST_GROUPS.TPS.ids.includes(s.id);
-
-                      return (
-                          <div key={s.id} className="bg-white border border-gray-200 p-4 rounded-lg shadow-sm flex flex-col justify-between hover:bg-gray-50 transition">
-                              <div className="flex justify-between items-start mb-2">
-                                  <div>
-                                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${isTPS ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                                          {isTPS ? 'TPS' : 'LITERASI'}
-                                      </span>
-                                      <h4 className="font-bold text-gray-800 mt-1 text-sm">{s.name}</h4>
-                                  </div>
-                                  <span className={`text-lg font-bold font-mono ${score < 0 ? 'text-red-500' : 'text-indigo-600'}`}>{score}</span>
-                              </div>
-                              
-                              <div>
-                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                      <span>Benar: <strong>{correct}</strong> / {total}</span>
-                                      <span>{percent}%</span>
-                                  </div>
-                                  <div className="w-full bg-gray-100 rounded-full h-2">
-                                      <div className={`h-2 rounded-full ${score < 0 ? 'bg-red-500' : 'bg-indigo-600'}`} style={{ width: `${Math.max(5, (score/250)*100)}%` }}></div>
-                                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+                      <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
+                      </div>
+                      
+                      <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
+                          <div className="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
+                               style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
+                              <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
+                                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
+                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
+                                      {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
+                                  </span>
                               </div>
                           </div>
-                      )
-                  })}
+                          
+                          <div className="space-y-4 w-full max-w-xs">
+                              <div>
+                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-indigo-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-indigo-600 mt-1">{tpsTotal} Poin</div>
+                              </div>
+                              <div>
+                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-violet-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-violet-600 mt-1">{litTotal} Poin</div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="flex flex-col gap-6">
+                      <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
+                          <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
+                              <Lightbulb size={24}/>
+                          </div>
+                          <div>
+                              <h4 className="font-bold text-orange-900 text-lg mb-1 flex items-center gap-2">
+                                  Rekomendasi AI
+                              </h4>
+                              <p className="text-orange-800 text-sm leading-relaxed opacity-90">
+                                  {mitigationText}
+                              </p>
+                          </div>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex items-center justify-between shadow-sm">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
+                              <div>
+                                  <h4 className="font-bold text-slate-700 text-sm">{speedAnalysisTitle}</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedAnalysisDesc}</p>
+                              </div>
+                          </div>
+                          <div className="text-right">
+                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(timeLeft)}</span>
+                              <span className="text-xs text-slate-400 block">Sisa Waktu</span>
+                          </div>
+                      </div>
+                  </div>
               </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                      <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
+                      <span className="text-xs font-medium text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">Deep Dive Analysis</span>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                      {SUBTESTS.map((s, idx) => {
+                          const score = scores[s.id] || 0;
+                          const correct = correctCounts[s.id] || 0;
+                          const totalQ = s.questions;
+                          const accuracy = Math.round((correct / totalQ) * 100);
+                          
+                          let colorClass = "bg-slate-400";
+                          let textClass = "text-slate-600";
+                          if(accuracy >= 75) { colorClass = "bg-emerald-500"; textClass="text-emerald-600"; }
+                          else if(accuracy >= 50) { colorClass = "bg-blue-500"; textClass="text-blue-600"; }
+                          else if(accuracy >= 30) { colorClass = "bg-yellow-500"; textClass="text-yellow-600"; }
+                          else { colorClass = "bg-red-500"; textClass="text-red-600"; }
+
+                          return (
+                              <div key={s.id} className="p-5 hover:bg-slate-50 transition group">
+                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                      <div className="flex items-center gap-4">
+                                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-md ${colorClass}`}>
+                                              {accuracy}%
+                                          </div>
+                                          <div>
+                                              <h5 className="font-bold text-slate-800 text-sm md:text-base">{s.name}</h5>
+                                              <div className="flex items-center gap-3 mt-1">
+                                                  <span className="text-xs font-medium text-slate-500">
+                                                      Benar: <strong className={textClass}>{correct}</strong> / {totalQ} Soal
+                                                  </span>
+                                                  <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                                  <span className="text-xs text-slate-400">
+                                                      Akurasi Jawaban
+                                                  </span>
+                                              </div>
+                                          </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-6 w-full md:w-auto">
+                                          <div className="flex-1 md:w-48">
+                                              <div className="flex justify-between text-xs mb-1.5 font-bold text-slate-400">
+                                                  <span>Progress Nilai</span>
+                                              </div>
+                                              <div className="w-full bg-slate-100 rounded-full h-2">
+                                                  <div 
+                                                      className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
+                                                      style={{ width: `${Math.min(100, (score/250)*100)}%` }}
+                                                  ></div>
+                                              </div>
+                                          </div>
+                                          <div className="text-right min-w-[60px]">
+                                              <span className="block text-[10px] uppercase font-bold text-slate-400">Skor</span>
+                                              <span className="text-xl font-black text-slate-800">{score}</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+                          )
+                      })}
+                  </div>
+              </div>
+
           </div>
       );
-  };
-
-  const ReviewSection = () => {
-    const currentQuestions = questionOrder[reviewSubtestId] || [];
-
-    return (
-        <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-10 duration-500">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Subtes untuk Direview:</label>
-                <select 
-                    value={reviewSubtestId} 
-                    onChange={(e) => setReviewSubtestId(e.target.value)} 
-                    className="w-full p-3 border rounded-lg bg-gray-50 font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-200"
-                >
-                    {SUBTESTS.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({questionOrder[s.id]?.length || 0} Soal)</option>
-                    ))}
-                </select>
-            </div>
-
-            <div className="space-y-4">
-                {currentQuestions.map((q, idx) => {
-                    const key = `${reviewSubtestId}_${idx}`;
-                    const userAnswer = answers[key];
-                    const correct = q.correct;
-                    
-                    let isCorrect = false;
-                    if (q.type === 'pilihan_majemuk') {
-                        if (Array.isArray(userAnswer) && Array.isArray(correct)) {
-                            isCorrect = [...userAnswer].sort().join(',') === [...correct].sort().join(',');
-                        }
-                    } else if (q.type === 'isian') {
-                        isCorrect = userAnswer?.toString().toLowerCase().trim() === correct.toString().toLowerCase().trim();
-                    } else {
-                        isCorrect = userAnswer === correct;
-                    }
-                    
-                    const isSkipped = !userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0);
-
-                    let correctContent = null;
-                    if (q.type === 'pilihan_ganda' && typeof correct === 'string') {
-                        const correctIndex = ['A','B','C','D','E'].indexOf(correct);
-                        if (correctIndex !== -1 && q.options && q.options[correctIndex]) {
-                            correctContent = q.options[correctIndex];
-                        }
-                    }
-
-                    return (
-                        <div key={idx} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-                                <span className="font-bold text-gray-700 bg-white border border-gray-200 px-3 py-1 rounded text-sm">
-                                    Soal No. {idx + 1}
-                                </span>
-                                <span className={`text-xs font-bold px-2 py-1 rounded border ${isCorrect ? 'bg-green-100 text-green-700 border-green-200' : isSkipped ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
-                                    {isCorrect ? 'BENAR' : isSkipped ? 'KOSONG' : 'SALAH'}
-                                </span>
-                            </div>
-                            
-                            <div className="p-5">
-                                <div className="text-gray-800 text-sm leading-relaxed font-medium mb-4 text-left text-justify whitespace-pre-wrap">
-                                    <Latex>{q.question}</Latex>
-                                </div>
-                                {q.image && <img src={q.image} className="w-full h-auto my-6 select-none object-contain" alt="Soal" />}
-                                
-                                <div className="space-y-2 text-sm">
-                                    <div className={`p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-100' : isSkipped ? 'bg-orange-50 border-orange-100' : 'bg-red-50 border-red-100'}`}>
-                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1">Jawaban Kamu:</span>
-                                        <span className="font-bold text-base">
-                                            {Array.isArray(userAnswer) ? userAnswer.join(', ') : (userAnswer || '-')}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="p-3 rounded-lg border bg-blue-50 border-blue-100">
-                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1 text-blue-800">Kunci Jawaban:</span>
-                                        <div className="font-bold text-base text-blue-900 flex flex-col gap-1">
-                                            <span>{Array.isArray(correct) ? correct.join(', ') : correct}</span>
-                                            {correctContent && (
-                                                <span className="text-sm font-normal border-t border-blue-200 pt-1 mt-1">
-                                                    <Latex>{correctContent}</Latex>
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
   };
 
   if (screen === 'countdown') {
@@ -678,19 +714,6 @@ const UTBKStudentApp = () => {
           </div>
 
           <div className="border-t pt-6 space-y-4">
-            <button 
-                onClick={() => setShowReview(!showReview)} 
-                className={`w-full py-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2 ${showReview ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-            >
-                {showReview ? (
-                    <>Tutup Pembahasan <ChevronUp size={20}/></>
-                ) : (
-                    <>Lihat Detail & Pembahasan <ChevronDown size={20}/></>
-                )}
-            </button>
-
-            {showReview && <ReviewSection />}
-
             <button onClick={() => { document.exitFullscreen().catch(()=>{}); localStorage.removeItem('utbk_student_token'); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
             <FooterLiezira />
           </div>
