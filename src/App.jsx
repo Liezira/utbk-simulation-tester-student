@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, BarChart3, LayoutDashboard } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -7,19 +7,21 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
-// --- KONFIGURASI KELOMPOK SUBTEST (BARU) ---
+// --- KONFIGURASI KELOMPOK SUBTEST ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "bg-blue-500",
-    text: "text-blue-600"
+    color: "bg-blue-600",
+    bg: "bg-blue-50",
+    text: "text-blue-700"
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
-    color: "bg-orange-500",
-    text: "text-orange-600"
+    color: "bg-violet-600",
+    bg: "bg-violet-50",
+    text: "text-violet-700"
   }
 };
 
@@ -50,8 +52,6 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
-  
-  // State Review dihapus (sesuai request: ganti analisis)
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -179,7 +179,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            const { totalScore } = calculateScore();
+            const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
@@ -284,7 +284,6 @@ const UTBKStudentApp = () => {
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     
-    // Logic Acak Soal (ORIGINAL)
     const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
     setTestOrder(shuffledSubtests);
     
@@ -308,6 +307,7 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
+  // --- TIMER & NAVIGATION LOGIC ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -408,130 +408,182 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- KOMPONEN ANALISIS EKSKLUSIF (BARU) ---
+  // --- DASHBOARD ANALISIS EKSKLUSIF (COMPLEX UPGRADE) ---
   const AnalysisDashboard = () => {
-      const { scores, totalScore } = calculateScore();
+      const { scores, totalScore, correctCounts } = calculateScore();
       
-      // Calculate Group Scores
       const tpsTotal = SUBTEST_GROUPS.TPS.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
       const litTotal = SUBTEST_GROUPS.LITERASI.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
       
-      // Percentage for Pie Chart
       const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; 
       const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
       const litPercent = 100 - tpsPercent;
 
-      // Identify Weakness & Mitigation
       const isWeakTPS = tpsTotal < litTotal;
-      const mitigationTitle = isWeakTPS ? "Fokus Perbaikan: TPS" : "Fokus Perbaikan: Literasi";
       const mitigationText = isWeakTPS 
-          ? "Kamu cenderung lebih kuat di analisis bacaan. Tingkatkan latihan pola logika, matematika dasar, dan kecepatan berhitung untuk menyeimbangkan skor TPS."
-          : "Logika kamu sangat kuat! Namun, perluas perbendaharaan kata (vocabulary) dan biasakan membaca teks panjang (skimming) untuk mendongkrak nilai Literasi.";
+          ? "Skor TPS kamu tertinggal. Ini menandakan perlunya penguatan di logika dasar, pola bilangan, dan pemahaman frasa. Fokuskan latihan pada soal-soal penalaran analitik."
+          : "Logika kamu kuat, namun aspek Literasi perlu didongkrak. Tingkatkan kecepatan membaca (skimming) dan perbanyak latihan soal bacaan panjang bahasa Indonesia & Inggris.";
 
-      const subtestKeys = Object.keys(scores);
-      const maxScoreSubtest = subtestKeys.length > 0 ? subtestKeys.reduce((a, b) => scores[a] > scores[b] ? a : b) : 'pu';
-      const maxSubtestName = SUBTESTS.find(s => s.id === maxScoreSubtest)?.name || "Penalaran Umum";
+      let motivation = "Terus berjuang!";
+      let badgeColor = "bg-gray-500";
+      let prediction = "Perlu Peningkatan";
 
-      let motivation = "";
-      if (totalScore > 700) motivation = "PERFORMA ELIT! Skor ini sangat kompetitif untuk jurusan favorit di UI/ITB/UGM.";
-      else if (totalScore > 550) motivation = "PROGRES BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi dorongan untuk tembus 650+.";
-      else motivation = "JANGAN MENYERAH! Ini adalah titik awal. Analisis kelemahan di bawah dan lipatgandakan latihan.";
+      if (totalScore > 750) {
+          motivation = "EXCELLENT! Skor ini sangat kompetitif untuk Kedokteran/STEI/FTTM.";
+          badgeColor = "bg-yellow-500";
+          prediction = "Sangat Aman";
+      } else if (totalScore > 600) {
+          motivation = "SANGAT BAIK! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju 700+.";
+          badgeColor = "bg-blue-500";
+          prediction = "Kompetitif";
+      } else {
+          motivation = "JANGAN MENYERAH! Ini adalah langkah awal. Analisis kelemahanmu di bawah ini.";
+          badgeColor = "bg-orange-500";
+          prediction = "Butuh Latihan Ekstra";
+      }
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              {/* Score & Motivation Card */}
-              <div className="bg-gradient-to-br from-indigo-800 to-indigo-600 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-20 -mt-20"></div>
-                  <div className="text-center md:text-left z-10">
-                      <div className="flex items-center gap-2 mb-2 justify-center md:justify-start opacity-80"><Lightbulb size={18}/> <span className="text-xs font-bold uppercase tracking-widest">Growth Mindset</span></div>
-                      <h2 className="text-2xl md:text-3xl font-bold mb-3 leading-tight">{motivation}</h2>
-                      <div className="flex gap-4 mt-4 justify-center md:justify-start">
-                          <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/10">
-                              <span className="block text-xs opacity-70">Potensi Terbaik</span>
-                              <span className="font-bold text-yellow-300">{maxSubtestName}</span>
+              {/* HERO CARD: SCORE & MOTIVATION */}
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700">
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600 rounded-full blur-[100px] opacity-30 -mr-20 -mt-20 pointer-events-none"></div>
+                  
+                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                      <div className="text-center md:text-left flex-1">
+                          <div className="flex items-center gap-2 mb-3 justify-center md:justify-start opacity-80">
+                              <Target size={16} className="text-indigo-400"/> 
+                              <span className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-200">Result Dashboard</span>
+                          </div>
+                          <h2 className="text-3xl md:text-4xl font-extrabold mb-4 leading-tight tracking-tight">{motivation}</h2>
+                          
+                          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/10">
+                              <span className={`w-3 h-3 rounded-full ${badgeColor} shadow-[0_0_10px_currentColor]`}></span>
+                              <span className="text-sm font-medium text-slate-200">Status: {prediction}</span>
+                          </div>
+                      </div>
+
+                      <div className="relative">
+                          <div className="absolute inset-0 bg-indigo-500 blur-2xl opacity-20 rounded-full"></div>
+                          <div className="bg-slate-800/80 p-6 rounded-2xl shadow-xl border border-slate-600 text-center min-w-[200px] backdrop-blur-md relative z-10">
+                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Skor Akhir</span>
+                              <div className="text-7xl font-black mt-2 text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-200 tracking-tighter">
+                                  {totalScore}
+                              </div>
                           </div>
                       </div>
                   </div>
-                  <div className="bg-white text-indigo-900 p-6 rounded-2xl shadow-lg text-center min-w-[160px] z-10 transform hover:scale-105 transition">
-                      <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Total Skor</span>
-                      <div className="text-6xl font-extrabold mt-1 tracking-tighter">{totalScore}</div>
-                  </div>
               </div>
 
-              {/* PIE CHART & MITIGATION */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Visualisasi Donut Chart (CSS Conic) */}
-                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center justify-center md:col-span-1">
-                      <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><PieChart size={18}/> Komposisi Skor</h4>
-                      <div className="relative w-40 h-40 rounded-full flex items-center justify-center shadow-inner"
-                           style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #f97316 ${tpsPercent}% 100%)` }}>
-                          <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-sm z-10">
-                              <span className="text-xs text-gray-400 font-bold uppercase">Dominasi</span>
-                              <span className={`text-xl font-extrabold ${tpsPercent > litPercent ? 'text-blue-600' : 'text-orange-600'}`}>
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* CHART SECTION */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center lg:col-span-1">
+                      <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Distribusi Skor</h4>
+                          <span className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-500 font-medium">Weighted</span>
+                      </div>
+                      
+                      <div className="relative w-48 h-48 rounded-full flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
+                           style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
+                          <div className="w-36 h-36 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
+                              <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
+                              <span className={`text-2xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
                                   {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
                               </span>
                           </div>
                       </div>
-                      <div className="flex gap-4 mt-6 w-full justify-center text-xs font-bold">
-                          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500"></span> TPS ({tpsPercent}%)</div>
-                          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500"></span> Literasi ({litPercent}%)</div>
-                      </div>
-                  </div>
-
-                  {/* Mitigation Strategy */}
-                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm md:col-span-2 flex flex-col">
-                      <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Target size={18}/> Strategi Mitigasi (Saran Belajar)</h4>
-                      <div className={`flex-1 rounded-xl p-5 border-l-4 flex flex-col justify-center ${isWeakTPS ? 'bg-blue-50 border-blue-500' : 'bg-orange-50 border-orange-500'}`}>
-                          <h5 className={`text-lg font-bold mb-2 ${isWeakTPS ? 'text-blue-800' : 'text-orange-800'}`}>{mitigationTitle}</h5>
-                          <p className="text-gray-700 leading-relaxed text-sm md:text-base">{mitigationText}</p>
-                      </div>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                              <span className="block text-xs text-gray-400 font-bold uppercase">Kontribusi TPS</span>
-                              <span className="text-lg font-bold text-blue-600">{tpsTotal} Poin</span>
+                      
+                      <div className="grid grid-cols-2 gap-4 mt-8 w-full">
+                          <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-center">
+                              <span className="block text-xs text-indigo-400 font-bold uppercase mb-1">TPS (Logika)</span>
+                              <span className="text-xl font-bold text-indigo-700">{tpsTotal}</span>
                           </div>
-                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
-                              <span className="block text-xs text-gray-400 font-bold uppercase">Kontribusi Literasi</span>
-                              <span className="text-lg font-bold text-orange-600">{litTotal} Poin</span>
+                          <div className="p-3 rounded-xl bg-violet-50 border border-violet-100 text-center">
+                              <span className="block text-xs text-violet-400 font-bold uppercase mb-1">Literasi</span>
+                              <span className="text-xl font-bold text-violet-700">{litTotal}</span>
                           </div>
                       </div>
                   </div>
-              </div>
 
-              {/* Detailed Bar Chart */}
-              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><BookOpen size={20} className="text-indigo-500"/> Detail Performa Subtes</h3>
-                  <div className="space-y-5">
-                      {SUBTESTS.map(s => {
-                          const score = scores[s.id] || 0;
-                          const percent = Math.min(100, Math.max(0, (score / 200) * 100)); // Asumsi visualisasi
-                          const isTPS = SUBTEST_GROUPS.TPS.ids.includes(s.id);
-                          
-                          return (
-                              <div key={s.id}>
-                                  <div className="flex justify-between text-sm mb-1.5">
-                                      <div className="flex items-center gap-2">
-                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${isTPS ? 'bg-blue-500' : 'bg-orange-500'}`}>{isTPS ? 'TPS' : 'LIT'}</span>
-                                          <span className="font-bold text-gray-700">{s.name}</span>
+                  {/* DETAILED STATS (COMPLEX) */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col">
+                      <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Statistik Subtes Detail</h4>
+                          <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-1 rounded font-bold">Accuracy & Score</span>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto pr-2 space-y-5">
+                          {SUBTESTS.map((s, idx) => {
+                              const score = scores[s.id] || 0;
+                              const correct = correctCounts[s.id] || 0;
+                              const totalQ = s.questions;
+                              const accuracy = Math.round((correct / totalQ) * 100);
+                              
+                              // Logic bar color based on accuracy
+                              let barColor = "bg-red-500";
+                              if(accuracy > 75) barColor = "bg-emerald-500";
+                              else if(accuracy > 50) barColor = "bg-blue-500";
+                              else if(accuracy > 30) barColor = "bg-yellow-500";
+
+                              return (
+                                  <div key={s.id} className="group">
+                                      <div className="flex justify-between items-end mb-2">
+                                          <div>
+                                              <div className="flex items-center gap-2 mb-1">
+                                                  <span className="text-xs font-bold text-slate-400">0{idx + 1}</span>
+                                                  <span className="font-bold text-slate-700 text-sm">{s.name}</span>
+                                              </div>
+                                              <div className="flex items-center gap-2">
+                                                  <span className={`text-[10px] px-1.5 rounded font-bold text-white ${accuracy > 50 ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                                                      {accuracy}% Akurasi
+                                                  </span>
+                                                  <span className="text-xs font-medium text-slate-500">
+                                                      Benar: <strong className="text-slate-800">{correct}</strong> / {totalQ} Soal
+                                                  </span>
+                                              </div>
+                                          </div>
+                                          <div className="text-right">
+                                              <span className="block text-xs text-slate-400 uppercase font-bold">Skor Bobot</span>
+                                              <span className="text-xl font-black text-slate-800">{score}</span>
+                                          </div>
                                       </div>
-                                      <span className="font-mono font-bold text-indigo-900">{score}</span>
+                                      
+                                      {/* Complex Progress Bar */}
+                                      <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden relative">
+                                          <div className="absolute inset-0 bg-slate-200/50 w-full h-full" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}}></div>
+                                          <div 
+                                              className={`h-full rounded-full transition-all duration-1000 ease-out shadow-sm ${barColor}`} 
+                                              style={{ width: `${Math.max(5, (score/250)*100)}%` }} // Visualisasi skor relatif ke max ~250 per subtes
+                                          ></div>
+                                      </div>
                                   </div>
-                                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-                                      <div 
-                                          className={`h-full rounded-full transition-all duration-1000 ease-out ${score < 0 ? 'bg-red-400' : score > 150 ? 'bg-green-500' : isTPS ? 'bg-blue-400' : 'bg-orange-400'}`} 
-                                          style={{ width: `${Math.max(5, percent)}%` }}
-                                      ></div>
-                                  </div>
-                              </div>
-                          )
-                      })}
+                              )
+                          })}
+                      </div>
                   </div>
               </div>
+
+              {/* MITIGATION (FULL WIDTH) */}
+              <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm">
+                  <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200">
+                      <Lightbulb size={24}/>
+                  </div>
+                  <div>
+                      <h4 className="font-bold text-orange-900 text-lg mb-1 flex items-center gap-2">
+                          Rekomendasi Strategis AI
+                          <span className="text-[10px] bg-orange-200 text-orange-800 px-2 py-0.5 rounded-full uppercase tracking-wider">Personalized</span>
+                      </h4>
+                      <p className="text-orange-800 text-sm leading-relaxed opacity-90 max-w-4xl">
+                          {mitigationText}
+                      </p>
+                  </div>
+              </div>
+
           </div>
       );
   };
 
+  // --- RENDER ---
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
@@ -548,7 +600,7 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Latihan Test UTBK SNBT</h1>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
@@ -603,10 +655,9 @@ const UTBKStudentApp = () => {
             </div>
           )}
           
-          {/* FITUR ANALISIS (PENGGANTI REVIEW) */}
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
