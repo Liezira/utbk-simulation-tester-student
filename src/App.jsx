@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, ShieldAlert, Timer, Trophy, Copyright, Activity, TrendingUp, BookOpen } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -34,8 +34,6 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(10);
   const [bankSoal, setBankSoal] = useState({});
-  const [showReview, setShowReview] = useState(false);
-  const [reviewSubtestId, setReviewSubtestId] = useState('pu');
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -49,7 +47,6 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. SESSION RESTORE & LOGIC PENGECEKAN STATUS ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -60,39 +57,21 @@ const UTBKStudentApp = () => {
                 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    
-                    // CEK EXPIRATION (1x24 JAM)
-                    const createdTime = new Date(data.createdAt).getTime();
+                    const loginTime = new Date(data.loginAt || data.createdAt).getTime();
                     const oneDay = 24 * 60 * 60 * 1000;
-                    const isExpired = (Date.now() - createdTime) > oneDay;
-
-                    if (isExpired) {
-                        // JIKA EXPIRED: Hapus sesi, tolak akses
-                        localStorage.removeItem('utbk_student_token');
-                        alert("Token ini sudah KADALUARSA (Lebih dari 24 Jam).");
-                        return;
-                    }
-
-                    // JIKA TIDAK EXPIRED, LANJUTKAN
-                    setStudentName(data.studentName);
-                    setCurrentTokenCode(savedToken);
                     
-                    // STATUS: USED (SUDAH SELESAI UJIAN) -> KE DASHBOARD HASIL
-                    if (data.status === 'used' && data.score !== undefined) {
-                        setAnswers(data.answers || {});
-                        if (data.historyQuestions) setQuestionOrder(data.historyQuestions); // LOAD SOAL LAMA
-                        // Pastikan testOrder terisi untuk navigasi review
-                        if (testOrder.length === 0) setTestOrder(SUBTESTS); 
-                        setScreen('result');
-                    } 
-                    // STATUS: ACTIVE (SEDANG UJIAN TAPI REFRESH) -> KEMBALIKAN KE LANDING/COUNTDOWN
-                    // (Opsional: Bisa dibuat resume ujian, tapi untuk keamanan kita reset ke landing dulu)
-                } else {
-                    localStorage.removeItem('utbk_student_token');
+                    if (Date.now() - loginTime < oneDay) {
+                        setStudentName(data.studentName);
+                        setCurrentTokenCode(savedToken);
+                        if (data.score !== undefined && data.score !== null) {
+                            if (data.answers) setAnswers(data.answers);
+                            setScreen('result');
+                        } 
+                    } else {
+                        localStorage.removeItem('utbk_student_token');
+                    }
                 }
-            } catch (error) {
-                console.error(error);
-            }
+            } catch (error) { console.error(error); }
         }
     };
     restoreSession();
@@ -103,34 +82,21 @@ const UTBKStudentApp = () => {
         try {
             const siteKey = import.meta.env.VITE_RECAPTCHA;
             if (siteKey) {
-                if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
-                    window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-                }
-
+                if (typeof window !== 'undefined' && window.location.hostname === 'localhost') window.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
                 const app = getApp(); 
-                initializeAppCheck(app, {
-                    provider: new ReCaptchaV3Provider(siteKey),
-                    isTokenAutoRefreshEnabled: true
-                });
-            } else {
-                console.warn("VITE_RECAPTCHA belum diset di .env");
+                initializeAppCheck(app, { provider: new ReCaptchaV3Provider(siteKey), isTokenAutoRefreshEnabled: true });
             }
-        } catch (error) {
-            console.error("App Check init failed:", error);
-        }
+        } catch (error) { console.error("App Check init failed:", error); }
     };
     initAppCheck();
   }, []);
 
-  // --- SECURITY ---
   useEffect(() => {
     const forceSubmit = (reason) => {
         if (screenRef.current === 'test' || screenRef.current === 'countdown') {
             setViolationReason(reason);
             setScreen('result');
-            if (document.fullscreenElement) {
-                document.exitFullscreen().catch(() => {});
-            }
+            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
         }
     };
 
@@ -140,15 +106,11 @@ const UTBKStudentApp = () => {
 
     const handleKeyDown = (e) => {
       if (
-          e.key === 'F12' || 
-          (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-          e.key === 'PrintScreen' || 
-          (e.altKey && e.key === 'Tab') || 
-          (e.metaKey) || 
-          (e.ctrlKey && e.key === 'u')
+          e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I') || e.key === 'PrintScreen' || 
+          (e.altKey && e.key === 'Tab') || (e.metaKey) || (e.ctrlKey && e.key === 'u')
       ) {
         e.preventDefault();
-        alert('⚠️ PERINGATAN: Tombol Dilarang!');
+        alert('⚠️ Tombol sistem dimatikan.');
       }
     };
 
@@ -169,7 +131,6 @@ const UTBKStudentApp = () => {
     };
   }, []); 
 
-  // --- LOAD BANK SOAL ---
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -186,18 +147,24 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  // --- LOGIC FINISH EXAM & SAVE TO DB ---
+  useEffect(() => {
+      if (Object.keys(bankSoal).length > 0 && testOrder.length === 0) {
+          setTestOrder(SUBTESTS); 
+          const qOrder = {};
+          SUBTESTS.forEach((subtest) => {
+              const bank = bankSoal[subtest.id] || [];
+              qOrder[subtest.id] = bank.slice(0, subtest.questions);
+          });
+          setQuestionOrder(qOrder);
+      }
+  }, [bankSoal, testOrder]);
+
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            // Cek apakah data sudah diload (jika login ulang) agar tidak overwrite
-            // Kita hanya save jika ini adalah sesi ujian baru (violation terjadi atau waktu habis)
-            // Namun logic di bawah aman karena updateDoc hanya merge fields.
-            
-            const { totalScore, correctCounts } = calculateScore();
-            
+            const { totalScore } = calculateScore();
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
@@ -205,57 +172,35 @@ const UTBKStudentApp = () => {
 
             try {
                 const tokenRef = doc(db, 'tokens', currentTokenCode);
-                
-                // DATA YANG DISIMPAN: Skor, Jawaban, DAN Soal yang didapat (History)
-                // Agar saat login lagi, soalnya sama persis.
                 await updateDoc(tokenRef, { 
-                    status: 'used', // TANDAI SUDAH DIGUNAKAN
+                    status: 'used',
                     score: totalScore,
                     finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
                     answers: answers,
-                    historyQuestions: questionOrder // SIMPAN SOAL YANG DIPILIH KE TOKEN
+                    historyQuestions: questionOrder
                 });
 
-                // FETCH LEADERBOARD
-                const q = query(
-                    collection(db, 'tokens'),
-                    where('score', '!=', null),
-                    orderBy('score', 'desc'),
-                    orderBy('finalTimeLeft', 'desc'),
-                    limit(10)
-                );
-
+                const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
                 const querySnapshot = await getDocs(q);
                 const top10 = [];
-                let rank = 1;
-                let userRank = null;
+                let rank = 1; let userRank = null;
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    top10.push({
-                        rank: rank,
-                        name: data.studentName,
-                        school: data.studentSchool || '-', 
-                        score: data.score,
-                        timeLeft: data.finalTimeLeft 
-                    });
+                    top10.push({ rank, name: data.studentName, school: data.studentSchool || '-', score: data.score, timeLeft: data.finalTimeLeft });
                     if (data.tokenCode === currentTokenCode) userRank = rank;
                     rank++;
                 });
-
                 setLeaderboard(top10);
                 setMyRank(userRank);
             } catch (error) { console.error("Leaderboard Error:", error); }
         };
         
-        // Jalankan hanya jika kita memiliki data ujian (bukan sekedar view result)
-        // Indikator sederhana: jika globalStartTime ada, berarti baru selesai ujian.
         if (globalStartTime) {
             finishExamProcess();
         } else {
-            // Jika login ulang (hanya view), load leaderboard saja
             const loadOnlyLeaderboard = async () => {
                  const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
                  const snap = await getDocs(q);
@@ -275,7 +220,6 @@ const UTBKStudentApp = () => {
     }
   }, [screen]); 
 
-  // --- LOGIC LOGIN TOKEN (DIPERBARUI) ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -286,45 +230,31 @@ const UTBKStudentApp = () => {
       if (!docSnap.exists()) { alert('Token TIDAK DITEMUKAN.'); return; }
       
       const data = docSnap.data();
-      
-      // 1. CEK EXPIRATION (Global check)
       const createdTime = new Date(data.createdAt).getTime();
       const oneDay = 24 * 60 * 60 * 1000;
       if ((Date.now() - createdTime) > oneDay) { 
-          alert('Token SUDAH KADALUARSA (Expired > 24 Jam). Tidak bisa diakses lagi.'); 
-          return; 
+          alert('Token SUDAH KADALUARSA (Expired > 24 Jam).'); return; 
       }
 
-      // 2. CEK STATUS
       if (data.status === 'used') {
-          // JIKA SUDAH DIPAKAI -> LANGSUNG KE DASHBOARD HASIL (LOAD DATA LAMA)
-          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini. Mengalihkan ke Halaman Hasil...`);
-          
+          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini.`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
           setAnswers(data.answers || {});
-          
-          if (data.historyQuestions) {
-              setQuestionOrder(data.historyQuestions);
-          }
-          if (testOrder.length === 0) setTestOrder(SUBTESTS); // Pastikan struktur subtes ada
-          
+          if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
+          if (testOrder.length === 0) setTestOrder(SUBTESTS); 
           setScreen('result');
           return;
       }
 
-      // 3. JIKA STATUS ACTIVE -> MULAI UJIAN BARU
       if (confirm(`Login sebagai ${data.studentName}?`)) {
-        // Update login time jika belum ada, tapi biarkan status tetap active sampai selesai
         await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
-        
         localStorage.setItem('utbk_student_token', tokenCode);
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
-        
-        try { await document.documentElement.requestFullscreen(); } catch (err) { console.log("Fullscreen blocked"); }
+        try { await document.documentElement.requestFullscreen(); } catch (err) {}
         setCountdownTime(10); 
         setScreen('countdown'); 
       }
@@ -337,15 +267,13 @@ const UTBKStudentApp = () => {
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     
-    // --- RANDOMISASI SOAL SAAT START ---
-    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
+    const shuffledSubtests = [...SUBTESTS];
     setTestOrder(shuffledSubtests);
     
     const qOrder = {};
     shuffledSubtests.forEach((subtest) => {
       const bank = [...(bankSoal[subtest.id] || [])];
-      // Acak soal dan ambil sesuai jumlah
-      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
+      qOrder[subtest.id] = bank.slice(0, subtest.questions);
     });
     setQuestionOrder(qOrder);
     
@@ -362,7 +290,6 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
-  // --- TIMER & NAVIGATION LOGIC (SAMA) ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -415,52 +342,36 @@ const UTBKStudentApp = () => {
       const sc = {}; 
       const cc = {}; 
       let tot = 0; 
-      
-      // Gunakan testOrder yang ada (bisa dari session restore atau baru)
-      // Jika testOrder kosong (kasus langka), pakai default SUBTESTS
       const orderToUse = testOrder.length > 0 ? testOrder : SUBTESTS;
 
       orderToUse.forEach(s => { 
           let sub = 0; 
           let correctCount = 0; 
-          
           const questions = questionOrder[s.id] || [];
 
           questions.forEach((q, i) => { 
               const k = `${s.id}_${i}`; 
               const ans = answers[k];
-              
               if (!ans || (Array.isArray(ans) && ans.length === 0) || (typeof ans === 'string' && ans.trim() === '')) {
                   sub -= 1; 
               } else {
                   let isCorrect = false;
-                  
                   if (q.type === 'pilihan_majemuk') {
                       if (Array.isArray(ans) && Array.isArray(q.correct)) {
                           const sortedAns = [...ans].sort().join(',');
                           const sortedKey = [...q.correct].sort().join(',');
                           isCorrect = (sortedAns === sortedKey);
                       }
-                  } 
-                  else if (q.type === 'isian') {
+                  } else if (q.type === 'isian') {
                       if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
-                  } 
-                  else {
-                      isCorrect = (ans === q.correct);
-                  }
+                  } else { isCorrect = (ans === q.correct); }
 
                   if (isCorrect) {
                       correctCount++;
-                      if (q.type === 'isian') {
-                          sub += 6; 
-                      } else if (q.type === 'pilihan_majemuk') {
-                          sub += 5; 
-                      } else {
-                          sub += 3; 
-                      }
-                  } else {
-                      sub += 0; 
-                  }
+                      if (q.type === 'isian') sub += 6; 
+                      else if (q.type === 'pilihan_majemuk') sub += 5; 
+                      else sub += 3; 
+                  } else { sub += 0; }
               }
           }); 
           sc[s.id] = sub; 
@@ -479,95 +390,74 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  const ReviewSection = () => {
-    const currentQuestions = questionOrder[reviewSubtestId] || [];
+  // --- ANALYSIS COMPONENT (REPLACES REVIEW) ---
+  const AnalysisDashboard = () => {
+      const { scores, totalScore } = calculateScore();
+      
+      const maxScoreSubtest = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
+      const minScoreSubtest = Object.keys(scores).reduce((a, b) => scores[a] < scores[b] ? a : b);
+      const maxSubtestName = SUBTESTS.find(s => s.id === maxScoreSubtest)?.name || "N/A";
+      const minSubtestName = SUBTESTS.find(s => s.id === minScoreSubtest)?.name || "N/A";
 
-    return (
-        <div className="mt-8 space-y-6 animate-in fade-in slide-in-from-bottom-10 duration-500">
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Pilih Subtes untuk Direview:</label>
-                <select 
-                    value={reviewSubtestId} 
-                    onChange={(e) => setReviewSubtestId(e.target.value)} 
-                    className="w-full p-3 border rounded-lg bg-gray-50 font-bold text-gray-800 outline-none focus:ring-2 focus:ring-indigo-200"
-                >
-                    {SUBTESTS.map(s => (
-                        <option key={s.id} value={s.id}>{s.name} ({questionOrder[s.id]?.length || 0} Soal)</option>
-                    ))}
-                </select>
-            </div>
+      let motivation = "";
+      if (totalScore > 700) motivation = "Luar Biasa! Skor kamu sangat kompetitif untuk PTN Top Cluster 1.";
+      else if (totalScore > 500) motivation = "Bagus! Kamu punya potensi besar, pertajam lagi di subtes yang masih lemah.";
+      else motivation = "Jangan menyerah! Analisis kelemahanmu dan fokus latihan di area tersebut.";
 
-            <div className="space-y-4">
-                {currentQuestions.map((q, idx) => {
-                    const key = `${reviewSubtestId}_${idx}`;
-                    const userAnswer = answers[key];
-                    const correct = q.correct;
-                    
-                    let isCorrect = false;
-                    if (q.type === 'pilihan_majemuk') {
-                        if (Array.isArray(userAnswer) && Array.isArray(correct)) {
-                            isCorrect = [...userAnswer].sort().join(',') === [...correct].sort().join(',');
-                        }
-                    } else if (q.type === 'isian') {
-                        isCorrect = userAnswer?.toString().toLowerCase().trim() === correct.toString().toLowerCase().trim();
-                    } else {
-                        isCorrect = userAnswer === correct;
-                    }
-                    
-                    const isSkipped = !userAnswer || (Array.isArray(userAnswer) && userAnswer.length === 0);
+      return (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
+              <div className="bg-gradient-to-r from-indigo-600 to-blue-500 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
+                  <div className="text-center md:text-left">
+                      <h2 className="text-3xl font-bold mb-2">Analisis Potensi Akademik</h2>
+                      <p className="text-indigo-100 opacity-90 max-w-lg">{motivation}</p>
+                  </div>
+                  <div className="bg-white/10 p-4 rounded-xl border border-white/20 backdrop-blur-sm text-center min-w-[150px]">
+                      <span className="text-xs uppercase tracking-widest opacity-80">Total Skor</span>
+                      <div className="text-5xl font-extrabold mt-1">{totalScore}</div>
+                  </div>
+              </div>
 
-                    let correctContent = null;
-                    if (q.type === 'pilihan_ganda' && typeof correct === 'string') {
-                        const correctIndex = ['A','B','C','D','E'].indexOf(correct);
-                        if (correctIndex !== -1 && q.options && q.options[correctIndex]) {
-                            correctContent = q.options[correctIndex];
-                        }
-                    }
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-green-50 border border-green-200 p-6 rounded-xl flex items-start gap-4">
+                      <div className="bg-green-100 p-3 rounded-lg text-green-600"><TrendingUp size={24}/></div>
+                      <div>
+                          <h4 className="font-bold text-green-900 text-lg">Kekuatan Utama</h4>
+                          <p className="text-green-700 font-medium">{maxSubtestName}</p>
+                          <p className="text-sm text-green-600 mt-1">Pertahankan konsistensi di subtes ini.</p>
+                      </div>
+                  </div>
+                  <div className="bg-orange-50 border border-orange-200 p-6 rounded-xl flex items-start gap-4">
+                      <div className="bg-orange-100 p-3 rounded-lg text-orange-600"><Activity size={24}/></div>
+                      <div>
+                          <h4 className="font-bold text-orange-900 text-lg">Area Pengembangan</h4>
+                          <p className="text-orange-700 font-medium">{minSubtestName}</p>
+                          <p className="text-sm text-orange-600 mt-1">Fokus belajar lebih intensif di sini.</p>
+                      </div>
+                  </div>
+              </div>
 
-                    return (
-                        <div key={idx} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-                                <span className="font-bold text-gray-700 bg-white border border-gray-200 px-3 py-1 rounded text-sm">
-                                    Soal No. {idx + 1}
-                                </span>
-                                <span className={`text-xs font-bold px-2 py-1 rounded border ${isCorrect ? 'bg-green-100 text-green-700 border-green-200' : isSkipped ? 'bg-orange-100 text-orange-700 border-orange-200' : 'bg-red-100 text-red-700 border-red-200'}`}>
-                                    {isCorrect ? 'BENAR' : isSkipped ? 'KOSONG' : 'SALAH'}
-                                </span>
-                            </div>
-                            
-                            <div className="p-5">
-                                <div className="text-gray-800 text-sm leading-relaxed font-medium mb-4 text-left text-justify whitespace-pre-wrap">
-                                    <Latex>{q.question}</Latex>
-                                </div>
-                                {q.image && <img src={q.image} className="w-full h-auto my-6 select-none object-contain" alt="Soal" />}
-                                
-                                <div className="space-y-2 text-sm">
-                                    <div className={`p-3 rounded-lg border ${isCorrect ? 'bg-green-50 border-green-100' : isSkipped ? 'bg-orange-50 border-orange-100' : 'bg-red-50 border-red-100'}`}>
-                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1">Jawaban Kamu:</span>
-                                        <span className="font-bold text-base">
-                                            {Array.isArray(userAnswer) ? userAnswer.join(', ') : (userAnswer || '-')}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="p-3 rounded-lg border bg-blue-50 border-blue-100">
-                                        <span className="block text-xs font-bold uppercase opacity-70 mb-1 text-blue-800">Kunci Jawaban:</span>
-                                        <div className="font-bold text-base text-blue-900 flex flex-col gap-1">
-                                            <span>{Array.isArray(correct) ? correct.join(', ') : correct}</span>
-                                            {correctContent && (
-                                                <span className="text-sm font-normal border-t border-blue-200 pt-1 mt-1">
-                                                    <Latex>{correctContent}</Latex>
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
+              <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+                  <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><BookOpen size={20} className="text-indigo-500"/> Grafik Performa Subtes</h3>
+                  <div className="space-y-4">
+                      {SUBTESTS.map(s => {
+                          const score = scores[s.id];
+                          const percent = Math.min(100, Math.max(0, (score / 200) * 100)); 
+                          return (
+                              <div key={s.id}>
+                                  <div className="flex justify-between text-sm mb-1">
+                                      <span className="font-medium text-gray-700">{s.name}</span>
+                                      <span className="font-bold text-indigo-600">{score}</span>
+                                  </div>
+                                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                                      <div className={`h-full rounded-full transition-all duration-1000 ease-out ${score < 0 ? 'bg-red-400' : score > 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${Math.max(5, percent)}%` }}></div>
+                                  </div>
+                              </div>
+                          )
+                      })}
+                  </div>
+              </div>
+          </div>
+      );
   };
 
   if (screen === 'countdown') {
@@ -576,7 +466,7 @@ const UTBKStudentApp = () => {
         <div className="mb-8 animate-pulse"><Timer size={64} /></div>
         <h2 className="text-2xl font-bold mb-4 uppercase tracking-widest">Persiapan Ujian</h2>
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
-        <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman. Dilarang keluar fullscreen.</p>
+        <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman & Dilarang keluar fullscreen.</p>
       </div>
     );
   }
@@ -586,11 +476,14 @@ const UTBKStudentApp = () => {
       <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Latihan Test UTBK SNBT</h1>
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={16}/> STRICT MODE:</div>
-            <ul className="list-disc pl-4 space-y-1 font-semibold"><li>DILARANG PINDAH TAB.</li><li>DILARANG KELUAR FULLSCREEN.</li><li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li></ul>
+            <ul className="list-disc pl-4 space-y-1 font-semibold">
+                <li>DILARANG PINDAH TAB / KELUAR FULLSCREEN.</li>
+                <li>Pelanggaran = <span className="underline">AUTO SUBMIT</span>.</li>
+            </ul>
           </div>
           <div className="bg-indigo-50 border border-indigo-200 p-5 rounded-xl mb-6">
             <label className="block text-indigo-900 font-bold mb-2 text-sm flex items-center justify-center gap-2"><Ticket size={18}/> Kode Token:</label>
@@ -629,7 +522,6 @@ const UTBKStudentApp = () => {
   }
 
   if (screen === 'result') {
-    const { scores, totalScore, correctCounts } = calculateScore();
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
@@ -641,21 +533,10 @@ const UTBKStudentApp = () => {
                <p className="text-sm font-normal mt-1">Alasan: {violationReason}</p>
             </div>
           )}
-          <div className="mb-8"><span className="text-sm text-gray-400 uppercase font-bold">Total Skor</span><div className="text-7xl font-extrabold text-indigo-600 mt-2">{totalScore}</div></div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-8 text-left">
-            {SUBTESTS.map((s) => (
-                <div key={s.id} className="bg-gray-50 border border-gray-200 p-3 rounded-lg flex justify-between items-center shadow-sm hover:bg-gray-100 transition">
-                    <div>
-                        <span className="text-xs font-bold text-gray-600 uppercase tracking-wide block">{s.name}</span>
-                        <span className="text-xs text-gray-500 font-medium bg-gray-200 px-2 py-0.5 rounded mt-1 inline-block">Benar: <span className="text-green-700 font-bold">{correctCounts[s.id]}</span> / {s.questions}</span>
-                    </div>
-                    <span className={`text-lg font-bold font-mono ${scores[s.id] < 0 ? 'text-red-500' : 'text-indigo-600'}`}>{scores[s.id]}</span>
-                </div>
-            ))}
-          </div>
+          <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
@@ -664,19 +545,6 @@ const UTBKStudentApp = () => {
           </div>
 
           <div className="border-t pt-6 space-y-4">
-            <button 
-                onClick={() => setShowReview(!showReview)} 
-                className={`w-full py-4 rounded-xl font-bold transition shadow-lg flex items-center justify-center gap-2 ${showReview ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-            >
-                {showReview ? (
-                    <>Tutup Pembahasan <ChevronUp size={20}/></>
-                ) : (
-                    <>Lihat Detail & Pembahasan <ChevronDown size={20}/></>
-                )}
-            </button>
-
-            {showReview && <ReviewSection />}
-
             <button onClick={() => { document.exitFullscreen().catch(()=>{}); localStorage.removeItem('utbk_student_token'); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
             <FooterLiezira />
           </div>
