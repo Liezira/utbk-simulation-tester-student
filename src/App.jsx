@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, BarChart3, LayoutDashboard, MapPin, Share2, Download, GraduationCap } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -408,7 +408,7 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- DASHBOARD ANALISIS EKSKLUSIF (PREMIUM UPGRADE) ---
+  // --- DASHBOARD ANALISIS MURNI (TANPA PREDIKSI KAMPUS) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -419,37 +419,37 @@ const UTBKStudentApp = () => {
       const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
       const litPercent = 100 - tpsPercent;
 
+      const isWeakTPS = tpsTotal < litTotal;
+      const mitigationText = isWeakTPS 
+          ? "Skor TPS kamu tertinggal. Ini menandakan perlunya penguatan di logika dasar, pola bilangan, dan pemahaman frasa. Fokuskan latihan pada soal-soal penalaran analitik."
+          : "Logika kamu kuat, namun aspek Literasi perlu didongkrak. Tingkatkan kecepatan membaca (skimming) dan perbanyak latihan soal bacaan panjang bahasa Indonesia & Inggris.";
+
       let motivation = "Terus berjuang!";
       let badgeColor = "bg-gray-500";
-      let prediction = "Butuh Perjuangan";
-      let campusPrediction = [];
+      let prediction = "Perlu Peningkatan";
 
       if (totalScore > 720) {
-          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk jurusan favorit.";
+          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
           badgeColor = "bg-emerald-500";
-          prediction = "Sangat Aman";
-          campusPrediction = ["UI (Kedokteran/Teknik)", "ITB (STEI/FTTM)", "UGM (Pendidikan Dokter)"];
-      } else if (totalScore > 630) {
-          motivation = "KERJA BAGUS! Kamu di atas rata-rata nasional. Peluang besar di PTN Top 3.";
+          prediction = "Sangat Kompetitif";
+      } else if (totalScore > 600) {
+          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju Top Tier.";
           badgeColor = "bg-blue-500";
           prediction = "Kompetitif";
-          campusPrediction = ["ITS (Teknik)", "UNAIR (Saintek/Soshum)", "UNDIP (Teknik/Hukum)"];
       } else if (totalScore > 500) {
-          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk mengamankan posisi.";
+          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
           badgeColor = "bg-yellow-500";
-          prediction = "Cukup Aman";
-          campusPrediction = ["UB (Saintek)", "UNPAD (Soshum)", "UNS (Pendidikan)"];
+          prediction = "Cukup Baik";
       } else {
           motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah dan lipatgandakan latihan.";
           badgeColor = "bg-orange-500";
-          prediction = "Perlu Latihan Ekstra";
-          campusPrediction = ["PTN Cluster 3", "UPNVY/UPNJ", "ITERAS/ITK"];
+          prediction = "Butuh Latihan Ekstra";
       }
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              {/* 1. HERO CARD PREMIUM */}
+              {/* 1. HERO CARD ANALISIS (BERSIH TANPA TOMBOL SHARE) */}
               <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
                   <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
                   
@@ -463,15 +463,9 @@ const UTBKStudentApp = () => {
                           <h2 className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">
                               {motivation}
                           </h2>
-
-                          <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
-                              <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white text-indigo-900 font-bold hover:bg-indigo-50 transition shadow-lg shadow-indigo-900/20 text-sm">
-                                  <Share2 size={16}/> Bagikan Hasil
-                              </button>
-                              <button className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-800/50 text-white font-bold border border-indigo-700 hover:bg-indigo-800 transition text-sm">
-                                  <Download size={16}/> Unduh Rapor
-                              </button>
-                          </div>
+                          <p className="text-indigo-200 text-sm md:text-base max-w-xl opacity-90">
+                              Hasil ini adalah cerminan pemahamanmu saat ini. Gunakan data di bawah untuk strategi belajar selanjutnya.
+                          </p>
                       </div>
 
                       <div className="relative group">
@@ -482,77 +476,84 @@ const UTBKStudentApp = () => {
                                   {totalScore}
                               </div>
                               <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">
-                                  Terverifikasi Sistem
+                                  Analisis AI Terverifikasi
                               </div>
                           </div>
                       </div>
                   </div>
               </div>
 
-              {/* 2. PREDIKSI KAMPUS (EXCLUSIVE FEATURE) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="bg-gradient-to-br from-emerald-50 to-teal-50 p-6 rounded-2xl border border-emerald-100 shadow-sm lg:col-span-1 flex flex-col relative overflow-hidden">
-                      <div className="absolute top-0 right-0 p-4 opacity-10"><GraduationCap size={120} className="text-emerald-600"/></div>
-                      <h4 className="font-bold text-emerald-900 flex items-center gap-2 mb-4 relative z-10"><GraduationCap size={20}/> Prediksi Kelulusan</h4>
-                      <p className="text-sm text-emerald-700 mb-4 relative z-10">Berdasarkan skormu, kamu memiliki peluang kompetitif di:</p>
-                      <div className="space-y-3 relative z-10">
-                          {campusPrediction.map((campus, idx) => (
-                              <div key={idx} className="bg-white/80 backdrop-blur-sm p-3 rounded-xl border border-emerald-200 flex items-center gap-3 shadow-sm">
-                                  <div className="bg-emerald-100 p-2 rounded-lg text-emerald-700 font-bold text-xs">{idx+1}</div>
-                                  <span className="font-bold text-emerald-900 text-sm">{campus}</span>
-                              </div>
-                          ))}
+              {/* 2. CHART & DISTRIBUTION & MITIGATION (SPLIT 2 COLUMNS) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* LEFT: CHART */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
+                      <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
                       </div>
-                  </div>
-
-                  {/* 3. CHART & DISTRIBUTION */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm lg:col-span-2 flex flex-col md:flex-row items-center gap-8">
-                      <div className="flex-1 w-full">
-                          <h4 className="font-bold text-slate-700 mb-6 flex items-center gap-2"><PieChart size={18}/> Dominasi Kemampuan</h4>
-                          <div className="flex items-center gap-6">
-                              <div className="relative w-32 h-32 rounded-full flex-shrink-0 flex items-center justify-center shadow-inner bg-slate-50"
-                                  style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #8b5cf6 ${tpsPercent}% 100%)` }}>
-                                  <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-lg z-10">
-                                      <span className="text-xs font-bold text-slate-400">Ratio</span>
-                                  </div>
+                      
+                      <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
+                          <div className="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
+                               style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
+                              <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
+                                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
+                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
+                                      {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
+                                  </span>
                               </div>
-                              <div className="space-y-3 w-full">
-                                  <div>
-                                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
-                                      <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-500 rounded-full"></div></div>
-                                  </div>
-                                  <div>
-                                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
-                                      <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-violet-500 rounded-full"></div></div>
-                                  </div>
+                          </div>
+                          
+                          <div className="space-y-4 w-full max-w-xs">
+                              <div>
+                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-indigo-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-indigo-600 mt-1">{tpsTotal} Poin</div>
+                              </div>
+                              <div>
+                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-violet-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-violet-600 mt-1">{litTotal} Poin</div>
                               </div>
                           </div>
                       </div>
-                      
-                      <div className="w-px h-32 bg-slate-100 hidden md:block"></div>
+                  </div>
 
-                      <div className="flex-1 w-full">
-                          <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2"><Activity size={18}/> Analisis Kecepatan</h4>
-                          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="flex justify-between items-center mb-2">
-                                  <span className="text-xs font-bold text-slate-400 uppercase">Waktu Tersisa</span>
-                                  <span className="text-lg font-bold text-slate-700">{formatTime(timeLeft)}</span>
-                              </div>
-                              <p className="text-xs text-slate-500 leading-relaxed">
-                                  {timeLeft > 1800 
-                                      ? "Kamu mengerjakan sangat cepat. Pastikan untuk meneliti kembali jawaban di ujian berikutnya agar tidak ada kesalahan kecil." 
-                                      : "Manajemen waktu kamu cukup baik. Pertahankan ritme ini agar semua soal bisa terjawab dengan teliti."}
+                  {/* RIGHT: MITIGATION & SPEED */}
+                  <div className="flex flex-col gap-6">
+                      <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
+                          <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
+                              <Lightbulb size={24}/>
+                          </div>
+                          <div>
+                              <h4 className="font-bold text-orange-900 text-lg mb-1 flex items-center gap-2">
+                                  Rekomendasi AI
+                              </h4>
+                              <p className="text-orange-800 text-sm leading-relaxed opacity-90">
+                                  {mitigationText}
                               </p>
                           </div>
                       </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex items-center justify-between shadow-sm">
+                          <div className="flex items-center gap-3">
+                              <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
+                              <div>
+                                  <h4 className="font-bold text-slate-700 text-sm">Sisa Waktu Ujian</h4>
+                                  <p className="text-xs text-slate-500">Manajemen Waktu</p>
+                              </div>
+                          </div>
+                          <div className="text-right">
+                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(timeLeft)}</span>
+                              <span className="text-xs text-slate-400 block">Menit : Detik</span>
+                          </div>
+                      </div>
                   </div>
               </div>
 
-              {/* 4. DETAILED STATS TABLE (GRANULAR) */}
+              {/* 3. DETAILED STATS TABLE (GRANULAR & EXCLUSIVE) */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
-                      <span className="text-xs font-medium text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">Detail Statistik</span>
+                      <span className="text-xs font-medium text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-200">Deep Dive Analysis</span>
                   </div>
                   <div className="divide-y divide-slate-100">
                       {SUBTESTS.map((s, idx) => {
@@ -561,22 +562,30 @@ const UTBKStudentApp = () => {
                           const totalQ = s.questions;
                           const accuracy = Math.round((correct / totalQ) * 100);
                           
+                          // Dynamic Color
+                          let colorClass = "bg-slate-400";
+                          let textClass = "text-slate-600";
+                          if(accuracy >= 75) { colorClass = "bg-emerald-500"; textClass="text-emerald-600"; }
+                          else if(accuracy >= 50) { colorClass = "bg-blue-500"; textClass="text-blue-600"; }
+                          else if(accuracy >= 30) { colorClass = "bg-yellow-500"; textClass="text-yellow-600"; }
+                          else { colorClass = "bg-red-500"; textClass="text-red-600"; }
+
                           return (
                               <div key={s.id} className="p-5 hover:bg-slate-50 transition group">
                                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                                       <div className="flex items-center gap-4">
-                                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm">
-                                              0{idx + 1}
+                                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-md ${colorClass}`}>
+                                              {accuracy}%
                                           </div>
                                           <div>
                                               <h5 className="font-bold text-slate-800 text-sm md:text-base">{s.name}</h5>
                                               <div className="flex items-center gap-3 mt-1">
                                                   <span className="text-xs font-medium text-slate-500">
-                                                      Benar: <strong className="text-emerald-600">{correct}</strong> / {totalQ} Soal
+                                                      Benar: <strong className={textClass}>{correct}</strong> / {totalQ} Soal
                                                   </span>
                                                   <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${accuracy > 60 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                      Akurasi {accuracy}%
+                                                  <span className="text-xs text-slate-400">
+                                                      Akurasi Jawaban
                                                   </span>
                                               </div>
                                           </div>
@@ -586,11 +595,10 @@ const UTBKStudentApp = () => {
                                           <div className="flex-1 md:w-48">
                                               <div className="flex justify-between text-xs mb-1.5 font-bold text-slate-400">
                                                   <span>Progress Nilai</span>
-                                                  <span>{score}</span>
                                               </div>
                                               <div className="w-full bg-slate-100 rounded-full h-2">
                                                   <div 
-                                                      className={`h-full rounded-full transition-all duration-1000 ${score > 150 ? 'bg-indigo-500' : 'bg-orange-400'}`} 
+                                                      className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
                                                       style={{ width: `${Math.min(100, (score/250)*100)}%` }}
                                                   ></div>
                                               </div>
