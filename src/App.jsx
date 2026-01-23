@@ -1,11 +1,29 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, ShieldAlert, Timer, Trophy, Copyright, Activity, TrendingUp, BookOpen } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, Activity, TrendingUp, BookOpen, PieChart, Lightbulb, Target } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
+
+// --- KONFIGURASI KELOMPOK SUBTEST ---
+const SUBTEST_GROUPS = {
+  TPS: {
+    title: "Tes Potensi Skolastik (TPS)",
+    ids: ['pu', 'ppu', 'pbm', 'pk'],
+    color: "bg-blue-500",
+    textColor: "text-blue-600",
+    desc: "Kemampuan kognitif, logika, dan pemahaman dasar."
+  },
+  LITERASI: {
+    title: "Tes Literasi & Penalaran",
+    ids: ['lbi', 'lbe', 'pm'],
+    color: "bg-orange-500",
+    textColor: "text-orange-600",
+    desc: "Kemampuan memahami bacaan kompleks dan matematika."
+  }
+};
 
 const SUBTESTS = [
   { id: 'pu', name: 'Penalaran Umum', questions: 30, time: 30 },
@@ -47,6 +65,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
+  // --- 1. SESSION RESTORE ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -57,14 +76,17 @@ const UTBKStudentApp = () => {
                 
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    const loginTime = new Date(data.loginAt || data.createdAt).getTime();
+                    const createdTime = new Date(data.createdAt).getTime();
                     const oneDay = 24 * 60 * 60 * 1000;
                     
-                    if (Date.now() - loginTime < oneDay) {
+                    if ((Date.now() - createdTime) < oneDay) {
                         setStudentName(data.studentName);
                         setCurrentTokenCode(savedToken);
-                        if (data.score !== undefined && data.score !== null) {
-                            if (data.answers) setAnswers(data.answers);
+                        
+                        if (data.status === 'used' && data.score !== undefined) {
+                            setAnswers(data.answers || {}); 
+                            if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
+                            if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
                         } 
                     } else {
@@ -91,6 +113,7 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
+  // --- SECURITY ---
   useEffect(() => {
     const forceSubmit = (reason) => {
         if (screenRef.current === 'test' || screenRef.current === 'countdown') {
@@ -165,6 +188,7 @@ const UTBKStudentApp = () => {
 
         const finishExamProcess = async () => {
             const { totalScore } = calculateScore();
+            
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
@@ -179,7 +203,7 @@ const UTBKStudentApp = () => {
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
                     answers: answers,
-                    historyQuestions: questionOrder
+                    historyQuestions: questionOrder 
                 });
 
                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
@@ -201,7 +225,7 @@ const UTBKStudentApp = () => {
         if (globalStartTime) {
             finishExamProcess();
         } else {
-            const loadOnlyLeaderboard = async () => {
+             const loadLeaderboardOnly = async () => {
                  const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
                  const snap = await getDocs(q);
                  const top10 = [];
@@ -214,8 +238,8 @@ const UTBKStudentApp = () => {
                  });
                  setLeaderboard(top10);
                  setMyRank(userRank);
-            };
-            loadOnlyLeaderboard();
+             }
+             loadLeaderboardOnly();
         }
     }
   }, [screen]); 
@@ -237,13 +261,15 @@ const UTBKStudentApp = () => {
       }
 
       if (data.status === 'used') {
-          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini.`);
+          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini. Mengalihkan ke Halaman Hasil...`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
+          
           setAnswers(data.answers || {});
           if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
           if (testOrder.length === 0) setTestOrder(SUBTESTS); 
+          
           setScreen('result');
           return;
       }
@@ -267,13 +293,13 @@ const UTBKStudentApp = () => {
 
     for (const s of SUBTESTS) { if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } }
     
-    const shuffledSubtests = [...SUBTESTS];
+    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
     setTestOrder(shuffledSubtests);
     
     const qOrder = {};
     shuffledSubtests.forEach((subtest) => {
       const bank = [...(bankSoal[subtest.id] || [])];
-      qOrder[subtest.id] = bank.slice(0, subtest.questions);
+      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
     });
     setQuestionOrder(qOrder);
     
@@ -390,66 +416,119 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- ANALYSIS COMPONENT (REPLACES REVIEW) ---
+  // --- GROWTH DASHBOARD COMPONENT (NEW) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore } = calculateScore();
       
-      const maxScoreSubtest = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);
-      const minScoreSubtest = Object.keys(scores).reduce((a, b) => scores[a] < scores[b] ? a : b);
-      const maxSubtestName = SUBTESTS.find(s => s.id === maxScoreSubtest)?.name || "N/A";
-      const minSubtestName = SUBTESTS.find(s => s.id === minScoreSubtest)?.name || "N/A";
+      // Calculate Group Scores
+      const tpsTotal = SUBTEST_GROUPS.TPS.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
+      const litTotal = SUBTEST_GROUPS.LITERASI.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
+      
+      // Percentage for Pie Chart
+      const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; // Prevent div by zero
+      const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
+      const litPercent = 100 - tpsPercent;
+
+      // Identify Weakness & Mitigation
+      const isWeakTPS = tpsTotal < litTotal;
+      const mitigationTitle = isWeakTPS ? "Fokus Perbaikan: TPS" : "Fokus Perbaikan: Literasi";
+      const mitigationText = isWeakTPS 
+          ? "Kamu cenderung lebih kuat di analisis bacaan. Tingkatkan latihan pola logika, matematika dasar, dan kecepatan berhitung untuk menyeimbangkan skor TPS."
+          : "Logika kamu sangat kuat! Namun, perluas perbendaharaan kata (vocabulary) dan biasakan membaca teks panjang (skimming) untuk mendongkrak nilai Literasi.";
+
+      const maxScoreSubtest = Object.keys(scores).length > 0 ? Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b) : 'pu';
+      const maxSubtestName = SUBTESTS.find(s => s.id === maxScoreSubtest)?.name || "Penalaran Umum";
 
       let motivation = "";
-      if (totalScore > 700) motivation = "Luar Biasa! Skor kamu sangat kompetitif untuk PTN Top Cluster 1.";
-      else if (totalScore > 500) motivation = "Bagus! Kamu punya potensi besar, pertajam lagi di subtes yang masih lemah.";
-      else motivation = "Jangan menyerah! Analisis kelemahanmu dan fokus latihan di area tersebut.";
+      if (totalScore > 700) motivation = "PERFORMA ELIT! Skor ini sangat kompetitif untuk jurusan favorit di UI/ITB/UGM.";
+      else if (totalScore > 550) motivation = "PROGRES BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi dorongan untuk tembus 650+.";
+      else motivation = "JANGAN MENYERAH! Ini adalah titik awal. Analisis kelemahan di bawah dan lipatgandakan latihan.";
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
-              <div className="bg-gradient-to-r from-indigo-600 to-blue-500 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
-                  <div className="text-center md:text-left">
-                      <h2 className="text-3xl font-bold mb-2">Analisis Potensi Akademik</h2>
-                      <p className="text-indigo-100 opacity-90 max-w-lg">{motivation}</p>
+              
+              {/* Score & Motivation Card */}
+              <div className="bg-gradient-to-br from-indigo-800 to-indigo-600 rounded-2xl p-8 text-white shadow-xl flex flex-col md:flex-row justify-between items-center gap-6 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full -mr-20 -mt-20"></div>
+                  <div className="text-center md:text-left z-10">
+                      <div className="flex items-center gap-2 mb-2 justify-center md:justify-start opacity-80"><Lightbulb size={18}/> <span className="text-xs font-bold uppercase tracking-widest">Growth Mindset</span></div>
+                      <h2 className="text-2xl md:text-3xl font-bold mb-3 leading-tight">{motivation}</h2>
+                      <div className="flex gap-4 mt-4 justify-center md:justify-start">
+                          <div className="bg-white/10 px-4 py-2 rounded-lg backdrop-blur-sm border border-white/10">
+                              <span className="block text-xs opacity-70">Potensi Terbaik</span>
+                              <span className="font-bold text-yellow-300">{maxSubtestName}</span>
+                          </div>
+                      </div>
                   </div>
-                  <div className="bg-white/10 p-4 rounded-xl border border-white/20 backdrop-blur-sm text-center min-w-[150px]">
-                      <span className="text-xs uppercase tracking-widest opacity-80">Total Skor</span>
-                      <div className="text-5xl font-extrabold mt-1">{totalScore}</div>
+                  <div className="bg-white text-indigo-900 p-6 rounded-2xl shadow-lg text-center min-w-[160px] z-10 transform hover:scale-105 transition">
+                      <span className="text-xs font-bold uppercase tracking-widest text-gray-500">Total Skor</span>
+                      <div className="text-6xl font-extrabold mt-1 tracking-tighter">{totalScore}</div>
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-green-50 border border-green-200 p-6 rounded-xl flex items-start gap-4">
-                      <div className="bg-green-100 p-3 rounded-lg text-green-600"><TrendingUp size={24}/></div>
-                      <div>
-                          <h4 className="font-bold text-green-900 text-lg">Kekuatan Utama</h4>
-                          <p className="text-green-700 font-medium">{maxSubtestName}</p>
-                          <p className="text-sm text-green-600 mt-1">Pertahankan konsistensi di subtes ini.</p>
+              {/* PIE CHART SECTION */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Visualisasi Donut Chart (CSS Conic) */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm flex flex-col items-center justify-center md:col-span-1">
+                      <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><PieChart size={18}/> Komposisi Skor</h4>
+                      <div className="relative w-40 h-40 rounded-full flex items-center justify-center shadow-inner"
+                           style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #f97316 ${tpsPercent}% 100%)` }}>
+                          <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-sm z-10">
+                              <span className="text-xs text-gray-400 font-bold uppercase">Dominasi</span>
+                              <span className={`text-xl font-extrabold ${tpsPercent > litPercent ? 'text-blue-600' : 'text-orange-600'}`}>
+                                  {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
+                              </span>
+                          </div>
+                      </div>
+                      <div className="flex gap-4 mt-6 w-full justify-center text-xs font-bold">
+                          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500"></span> TPS ({tpsPercent}%)</div>
+                          <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-orange-500"></span> Literasi ({litPercent}%)</div>
                       </div>
                   </div>
-                  <div className="bg-orange-50 border border-orange-200 p-6 rounded-xl flex items-start gap-4">
-                      <div className="bg-orange-100 p-3 rounded-lg text-orange-600"><Activity size={24}/></div>
-                      <div>
-                          <h4 className="font-bold text-orange-900 text-lg">Area Pengembangan</h4>
-                          <p className="text-orange-700 font-medium">{minSubtestName}</p>
-                          <p className="text-sm text-orange-600 mt-1">Fokus belajar lebih intensif di sini.</p>
+
+                  {/* Mitigation Strategy */}
+                  <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm md:col-span-2 flex flex-col">
+                      <h4 className="font-bold text-gray-700 mb-4 flex items-center gap-2"><Target size={18}/> Strategi Mitigasi (Saran Belajar)</h4>
+                      <div className={`flex-1 rounded-xl p-5 border-l-4 flex flex-col justify-center ${isWeakTPS ? 'bg-blue-50 border-blue-500' : 'bg-orange-50 border-orange-500'}`}>
+                          <h5 className={`text-lg font-bold mb-2 ${isWeakTPS ? 'text-blue-800' : 'text-orange-800'}`}>{mitigationTitle}</h5>
+                          <p className="text-gray-700 leading-relaxed text-sm md:text-base">{mitigationText}</p>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                              <span className="block text-xs text-gray-400 font-bold uppercase">Kontribusi TPS</span>
+                              <span className="text-lg font-bold text-blue-600">{tpsTotal} Poin</span>
+                          </div>
+                          <div className="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                              <span className="block text-xs text-gray-400 font-bold uppercase">Kontribusi Literasi</span>
+                              <span className="text-lg font-bold text-orange-600">{litTotal} Poin</span>
+                          </div>
                       </div>
                   </div>
               </div>
 
+              {/* Detailed Bar Chart */}
               <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                  <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><BookOpen size={20} className="text-indigo-500"/> Grafik Performa Subtes</h3>
-                  <div className="space-y-4">
+                  <h3 className="font-bold text-gray-800 mb-6 flex items-center gap-2"><BookOpen size={20} className="text-indigo-500"/> Detail Performa Subtes</h3>
+                  <div className="space-y-5">
                       {SUBTESTS.map(s => {
-                          const score = scores[s.id];
-                          const percent = Math.min(100, Math.max(0, (score / 200) * 100)); 
+                          const score = scores[s.id] || 0;
+                          const percent = Math.min(100, Math.max(0, (score / 200) * 100)); // Asumsi visualisasi
+                          const isTPS = SUBTEST_GROUPS.TPS.ids.includes(s.id);
+                          
                           return (
                               <div key={s.id}>
-                                  <div className="flex justify-between text-sm mb-1">
-                                      <span className="font-medium text-gray-700">{s.name}</span>
-                                      <span className="font-bold text-indigo-600">{score}</span>
+                                  <div className="flex justify-between text-sm mb-1.5">
+                                      <div className="flex items-center gap-2">
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold text-white ${isTPS ? 'bg-blue-500' : 'bg-orange-500'}`}>{isTPS ? 'TPS' : 'LIT'}</span>
+                                          <span className="font-bold text-gray-700">{s.name}</span>
+                                      </div>
+                                      <span className="font-mono font-bold text-indigo-900">{score}</span>
                                   </div>
-                                  <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
-                                      <div className={`h-full rounded-full transition-all duration-1000 ease-out ${score < 0 ? 'bg-red-400' : score > 100 ? 'bg-green-500' : 'bg-indigo-500'}`} style={{ width: `${Math.max(5, percent)}%` }}></div>
+                                  <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+                                      <div 
+                                          className={`h-full rounded-full transition-all duration-1000 ease-out ${score < 0 ? 'bg-red-400' : score > 150 ? 'bg-green-500' : isTPS ? 'bg-blue-400' : 'bg-orange-400'}`} 
+                                          style={{ width: `${Math.max(5, percent)}%` }}
+                                      ></div>
                                   </div>
                               </div>
                           )
@@ -460,13 +539,14 @@ const UTBKStudentApp = () => {
       );
   };
 
+  // --- RENDER ---
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
         <div className="mb-8 animate-pulse"><Timer size={64} /></div>
         <h2 className="text-2xl font-bold mb-4 uppercase tracking-widest">Persiapan Ujian</h2>
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
-        <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman & Dilarang keluar fullscreen.</p>
+        <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman. Dilarang keluar fullscreen.</p>
       </div>
     );
   }
