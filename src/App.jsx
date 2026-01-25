@@ -7,20 +7,17 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
+// --- KONFIGURASI GROUP (Untuk Logic Analisis) ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "bg-blue-600",
-    bg: "bg-blue-50",
-    text: "text-blue-700"
+    color: "#3b82f6", // Blue
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
-    color: "bg-violet-600",
-    bg: "bg-violet-50",
-    text: "text-violet-700"
+    color: "#8b5cf6", // Violet
   }
 };
 
@@ -401,6 +398,7 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
+  // --- ANALISIS DASHBOARD (SAMA SEPERTI GAMBAR + TEMPO IDEAL = SISA WAKTU) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -438,12 +436,17 @@ const UTBKStudentApp = () => {
           prediction = "Butuh Latihan Ekstra";
       }
 
-      // GLOBAL TIME LOGIC
-      // Calculation similar to finishExamProcess
+      // --- LOGIC TEMPO IDEAL = SISA WAKTU GLOBAL (DARI LEADERBOARD) ---
+      // Hitung total alokasi waktu global (dalam detik)
       const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
-      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
-      const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
+      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
+      
+      // Jika pakai globalStartTime (Real Time), hitung sisa waktu aktual
+      // Jika tidak, gunakan 'timeLeft' (sisa waktu timer subtes terakhir)
+      // Agar SAMA PERSIS dengan Leaderboard (yang menghitung sisa waktu global), kita gunakan logika ini:
+      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : (totalAllocatedSeconds * 1000);
+      const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedSeconds * 1000 - usedTimeMS) / 1000));
+      // ---------------------------------------------------------------
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
@@ -532,8 +535,8 @@ const UTBKStudentApp = () => {
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
                               <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">Sisa Waktu Global</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">Total waktu yang tersisa saat selesai.</p>
+                                  <h4 className="font-bold text-slate-700 text-sm">Tempo Ideal (Sisa Waktu)</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">Total waktu global yang tersisa saat selesai.</p>
                               </div>
                           </div>
                           <div className="text-right">
@@ -685,7 +688,7 @@ const UTBKStudentApp = () => {
           
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
