@@ -433,15 +433,15 @@ const UTBKStudentApp = () => {
       let badgeColor = "bg-gray-500";
       let prediction = "Perlu Peningkatan";
 
-      if (totalScore > 720) {
+      if (totalScore > 400) {
           motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
           badgeColor = "bg-emerald-500";
           prediction = "Sangat Kompetitif";
-      } else if (totalScore > 600) {
-          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju Top Tier.";
+      } else if (totalScore > 250) {
+          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata. Sedikit lagi menuju Top Tier.";
           badgeColor = "bg-blue-500";
           prediction = "Kompetitif";
-      } else if (totalScore > 500) {
+      } else if (totalScore > 200) {
           motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
           badgeColor = "bg-yellow-500";
           prediction = "Cukup Baik";
