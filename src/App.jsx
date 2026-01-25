@@ -174,7 +174,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            const { totalScore } = calculateScore();
+            const { totalScore, correctCounts } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
@@ -438,32 +438,12 @@ const UTBKStudentApp = () => {
           prediction = "Butuh Latihan Ekstra";
       }
 
+      // GLOBAL TIME LOGIC
+      // Calculation similar to finishExamProcess
       const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
-      const allocatedSeconds = totalAllocatedMinutes * 60;
-      const timeSpent = allocatedSeconds - timeLeft; 
-      const avgTimePerQuestion = timeSpent / totalQuestionsCount;
-
-      let speedAnalysisTitle = "Tempo Ideal";
-      let speedAnalysisDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
-
-      if (avgTimePerQuestion < 45) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Terburu-buru (Rushing)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal. Kamu mengerjakan terlalu cepat sehingga banyak kesalahan. Teliti lagi.`;
-          } else {
-              speedAnalysisTitle = "Sangat Efisien (Mastery)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal dengan akurasi tinggi. Kamu sangat menguasai materi ini.`;
-          }
-      } else if (avgTimePerQuestion > 180) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Stuck (Terlalu Lama)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion / 60)} menit/soal. Jangan terpaku pada soal sulit terlalu lama.`;
-          } else {
-              speedAnalysisTitle = "Deep Thinker";
-              speedAnalysisDesc = "Kamu butuh waktu lama tapi hasilnya akurat. Coba latih kecepatan agar semua soal terkejar.";
-          }
-      }
+      const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
+      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
+      const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
@@ -552,13 +532,13 @@ const UTBKStudentApp = () => {
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
                               <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">{speedAnalysisTitle}</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedAnalysisDesc}</p>
+                                  <h4 className="font-bold text-slate-700 text-sm">Sisa Waktu Global</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">Total waktu yang tersisa saat selesai.</p>
                               </div>
                           </div>
                           <div className="text-right">
-                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(timeLeft)}</span>
-                              <span className="text-xs text-slate-400 block">Sisa Waktu</span>
+                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(globalTimeLeftSeconds)}</span>
+                              <span className="text-xs text-slate-400 block">Menit : Detik</span>
                           </div>
                       </div>
                   </div>
