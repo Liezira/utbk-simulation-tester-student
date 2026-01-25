@@ -7,17 +7,20 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
-// --- CONFIGURATION FOR EXCLUSIVE UI (Matching Images) ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "#3b82f6", // Blue
+    color: "bg-blue-600",
+    bg: "bg-blue-50",
+    text: "text-blue-700"
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
-    color: "#8b5cf6", // Violet (Purple)
+    color: "bg-violet-600",
+    bg: "bg-violet-50",
+    text: "text-violet-700"
   }
 };
 
@@ -61,7 +64,6 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- SESSION RESTORE (With 24h Expiry Check) ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -75,7 +77,6 @@ const UTBKStudentApp = () => {
                     const createdTime = new Date(data.createdAt).getTime();
                     const oneDay = 24 * 60 * 60 * 1000;
                     
-                    // Check if token is older than 24 hours
                     if ((Date.now() - createdTime) < oneDay) {
                         setStudentName(data.studentName);
                         setCurrentTokenCode(savedToken);
@@ -112,11 +113,9 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- SECURITY: FORCE SUBMIT ON VIOLATION ---
   useEffect(() => {
     const forceSubmit = (reason) => {
-        // Enforce strict mode during test, countdown, AND break
-        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
+        if (screenRef.current === 'test' || screenRef.current === 'countdown') {
             setViolationReason(reason);
             setScreen('result');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -124,16 +123,8 @@ const UTBKStudentApp = () => {
     };
 
     const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
-    const handleFullscreenChange = () => { 
-        if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break')) {
-            forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); 
-        }
-    };
-    const handleBlur = () => { 
-        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
-            forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); 
-        }
-    };
+    const handleFullscreenChange = () => { if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown')) forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
+    const handleBlur = () => { if (screenRef.current === 'test' || screenRef.current === 'countdown') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
 
     const handleKeyDown = (e) => {
       if (
@@ -183,13 +174,11 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            const { totalScore, correctCounts } = calculateScore();
+            const { totalScore } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
-            // Calculate actual used time: Now - Start Time
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
-            // Calculate remaining global time
             const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
             try {
@@ -197,7 +186,7 @@ const UTBKStudentApp = () => {
                 await updateDoc(tokenRef, { 
                     status: 'used',
                     score: totalScore,
-                    finalTimeLeft: globalTimeLeftSeconds, // Save global remaining time
+                    finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
                     answers: answers,
@@ -412,7 +401,6 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
-  // --- ANALISIS DASHBOARD (UI MATCHING IMAGES + LOGIC TIME ANALYSIS) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -430,69 +418,56 @@ const UTBKStudentApp = () => {
 
       let motivation = "Terus berjuang!";
       let badgeColor = "bg-gray-500";
-      let prediction = "Butuh Latihan Ekstra";
+      let prediction = "Perlu Peningkatan";
 
-      // Adjusted thresholds as requested: 150-250 is considered decent/good
       if (totalScore > 720) {
-          motivation = "LUAR BIASA! Skor ini sangat kompetitif.";
+          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
           badgeColor = "bg-emerald-500";
           prediction = "Sangat Kompetitif";
-      } else if (totalScore > 550) {
-          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata.";
+      } else if (totalScore > 600) {
+          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata nasional. Sedikit lagi menuju Top Tier.";
           badgeColor = "bg-blue-500";
           prediction = "Kompetitif";
-      } else if (totalScore >= 150) {
-          motivation = "PROGRES BAIK. Cukup baik, tingkatkan lagi.";
+      } else if (totalScore > 500) {
+          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
           badgeColor = "bg-yellow-500";
           prediction = "Cukup Baik";
       } else {
-          motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah.";
+          motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah dan lipatgandakan latihan.";
           badgeColor = "bg-orange-500";
           prediction = "Butuh Latihan Ekstra";
       }
 
-      // --- LOGIC TEMPO IDEAL (Based on Global Remaining Time + Score) ---
-      // Logic: High Score + Fast = Good; Low Score + Fast = Bad
-      
-      // Calculate Total Allocated Time (seconds)
       const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
+      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
+      const allocatedSeconds = totalAllocatedMinutes * 60;
+      const timeSpent = allocatedSeconds - timeLeft; 
+      const avgTimePerQuestion = timeSpent / totalQuestionsCount;
 
-      // Calculate Real Remaining Time based on Global Start Time
-      // If globalStartTime exists, use (Date.now - start). If not (e.g., restored from local storage), fallback to timeLeft calculation (approx)
-      let usedTimeSeconds = 0;
-      if (globalStartTime) {
-          usedTimeSeconds = Math.floor((Date.now() - globalStartTime) / 1000);
-      } else {
-          // Fallback if session restored (approximate)
-          usedTimeSeconds = totalAllocatedSeconds - timeLeft;
-      }
-      
-      // Ensure we don't go below 0 or above total allocated
-      const remainingSeconds = Math.max(0, totalAllocatedSeconds - usedTimeSeconds);
+      let speedAnalysisTitle = "Tempo Ideal";
+      let speedAnalysisDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
 
-      // Analysis Logic
-      let tempoStatus = "Tempo Ideal";
-      let tempoDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
-
-      // If finished with lots of time remaining (> 30 mins)
-      if (remainingSeconds > 1800) { 
-          if (totalScore < 300) {
-              tempoStatus = "Terlalu Cepat";
-              tempoDesc = "Sisa waktu masih banyak tapi skor rendah. Kamu mungkin kurang teliti atau asal menjawab.";
+      if (avgTimePerQuestion < 45) {
+          if (totalScore < 500) {
+              speedAnalysisTitle = "Terburu-buru (Rushing)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal. Kamu mengerjakan terlalu cepat sehingga banyak kesalahan. Teliti lagi.`;
           } else {
-              tempoStatus = "Sangat Efisien";
-              tempoDesc = "Kamu mengerjakan dengan cepat dan skor cukup baik. Pertahankan ketelitian!";
+              speedAnalysisTitle = "Sangat Efisien (Mastery)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal dengan akurasi tinggi. Kamu sangat menguasai materi ini.`;
           }
-      } else if (remainingSeconds < 600 && remainingSeconds > 0) { // Less than 10 mins remaining
-          tempoStatus = "Waktu Mepet";
-          tempoDesc = "Kamu hampir kehabisan waktu. Cobalah manajemen waktu yang lebih baik di soal-soal sulit.";
+      } else if (avgTimePerQuestion > 180) {
+          if (totalScore < 500) {
+              speedAnalysisTitle = "Stuck (Terlalu Lama)";
+              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion / 60)} menit/soal. Jangan terpaku pada soal sulit terlalu lama.`;
+          } else {
+              speedAnalysisTitle = "Deep Thinker";
+              speedAnalysisDesc = "Kamu butuh waktu lama tapi hasilnya akurat. Coba latih kecepatan agar semua soal terkejar.";
+          }
       }
-      
+
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              {/* HERO CARD (EXCLUSIVE UI - Gradient Purple/Blue) */}
               <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
                   <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
                   
@@ -527,7 +502,6 @@ const UTBKStudentApp = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* LEFT: DONUT CHART (EXCLUSIVE UI - Blue vs Purple) */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                       <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                           <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
@@ -535,10 +509,10 @@ const UTBKStudentApp = () => {
                       
                       <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
                           <div className="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
-                               style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #8b5cf6 ${tpsPercent}% 100%)` }}>
+                               style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
                               <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
                                   <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
-                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-blue-600' : 'text-violet-600'}`}>
+                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
                                       {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
                                   </span>
                               </div>
@@ -547,8 +521,8 @@ const UTBKStudentApp = () => {
                           <div className="space-y-4 w-full max-w-xs">
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-600 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-blue-600 mt-1">{tpsTotal} Poin</div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-indigo-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-indigo-600 mt-1">{tpsTotal} Poin</div>
                               </div>
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
@@ -559,9 +533,8 @@ const UTBKStudentApp = () => {
                       </div>
                   </div>
 
-                  {/* RIGHT: RECOMMENDATION & TEMPO (EXCLUSIVE UI - Orange Box) */}
                   <div className="flex flex-col gap-6">
-                      <div className="bg-orange-50 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
+                      <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
                           <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
                               <Lightbulb size={24}/>
                           </div>
@@ -575,24 +548,22 @@ const UTBKStudentApp = () => {
                           </div>
                       </div>
 
-                      {/* Tempo Section using Global Time from Leaderboard Logic */}
                       <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex items-center justify-between shadow-sm">
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
                               <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">{tempoStatus}</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">{tempoDesc}</p>
+                                  <h4 className="font-bold text-slate-700 text-sm">{speedAnalysisTitle}</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedAnalysisDesc}</p>
                               </div>
                           </div>
                           <div className="text-right">
-                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(remainingSeconds)}</span>
-                              <span className="text-xs text-slate-400 block">Sisa Waktu Global</span>
+                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(timeLeft)}</span>
+                              <span className="text-xs text-slate-400 block">Sisa Waktu</span>
                           </div>
                       </div>
                   </div>
               </div>
 
-              {/* DETAILED STATS (Sama seperti gambar) */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
@@ -641,7 +612,7 @@ const UTBKStudentApp = () => {
                                               <div className="w-full bg-slate-100 rounded-full h-2">
                                                   <div 
                                                       className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
-                                                      style={{ width: `${Math.min(100, Math.abs(score/3))}%` }} // Simplified visual progress
+                                                      style={{ width: `${Math.min(100, (score/250)*100)}%` }}
                                                   ></div>
                                               </div>
                                           </div>
@@ -723,9 +694,8 @@ const UTBKStudentApp = () => {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
-          <h1 className="text-3xl font-bold mb-2 text-indigo-900 hidden">Hasil Ujian</h1> 
-          {/* Hidden title because the Exclusive Hero Card replaces it */}
-          
+          <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
+          <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
           {violationReason && (
             <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
                <div className="flex items-center justify-center gap-2 text-lg"><ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS</div>
