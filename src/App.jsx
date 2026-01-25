@@ -7,20 +7,17 @@ import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
 
+// --- CONFIGURATION ---
 const SUBTEST_GROUPS = {
   TPS: {
     title: "Tes Potensi Skolastik (TPS)",
     ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "bg-blue-600",
-    bg: "bg-blue-50",
-    text: "text-blue-700"
+    color: "#3b82f6", 
   },
   LITERASI: {
     title: "Tes Literasi & Penalaran",
     ids: ['lbi', 'lbe', 'pm'],
-    color: "bg-violet-600",
-    bg: "bg-violet-50",
-    text: "text-violet-700"
+    color: "#f97316", 
   }
 };
 
@@ -49,7 +46,7 @@ const UTBKStudentApp = () => {
   const [testOrder, setTestOrder] = useState([]);
   const [questionOrder, setQuestionOrder] = useState({});
   const [breakTime, setBreakTime] = useState(10); 
-  const [countdownTime, setCountdownTime] = useState(10);
+  const [countdownTime, setCountdownTime] = useState(5); // CHANGED TO 5 SECONDS
   const [bankSoal, setBankSoal] = useState({});
   
   const [globalStartTime, setGlobalStartTime] = useState(null);
@@ -64,6 +61,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
+  // --- SESSION RESTORE ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -97,6 +95,7 @@ const UTBKStudentApp = () => {
     restoreSession();
   }, []);
 
+  // --- APP CHECK ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
@@ -113,9 +112,11 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
+  // --- SECURITY (OPTIMIZED FOR MOBILE) ---
   useEffect(() => {
     const forceSubmit = (reason) => {
-        if (screenRef.current === 'test' || screenRef.current === 'countdown') {
+        // Active on test, countdown, and break screens
+        if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
             setViolationReason(reason);
             setScreen('result');
             if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -123,8 +124,15 @@ const UTBKStudentApp = () => {
     };
 
     const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
-    const handleFullscreenChange = () => { if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown')) forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); };
-    const handleBlur = () => { if (screenRef.current === 'test' || screenRef.current === 'countdown') forceSubmit("DISKUALIFIKASI: Fokus Layar Hilang (Multitasking)."); };
+    
+    const handleFullscreenChange = () => { 
+        if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break')) {
+            forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); 
+        }
+    };
+    
+    // NOTE: 'blur' listener REMOVED to make it less sensitive on Mobile.
+    // Mobile users trigger 'blur' easily (e.g., pulling down notification bar), which shouldn't immediately disqualify them.
 
     const handleKeyDown = (e) => {
       if (
@@ -140,19 +148,18 @@ const UTBKStudentApp = () => {
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    window.addEventListener('blur', handleBlur); 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      window.removeEventListener('blur', handleBlur);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []); 
 
+  // --- LOAD SOAL ---
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -169,6 +176,7 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
+  // --- FINISH EXAM & LEADERBOARD LOGIC ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
@@ -178,6 +186,8 @@ const UTBKStudentApp = () => {
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
+            
+            // Global Time Calculation
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
             const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
@@ -231,6 +241,7 @@ const UTBKStudentApp = () => {
     }
   }, [screen]); 
 
+  // --- TOKEN LOGIN ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -266,7 +277,7 @@ const UTBKStudentApp = () => {
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
         try { await document.documentElement.requestFullscreen(); } catch (err) {}
-        setCountdownTime(10); 
+        setCountdownTime(5); 
         setScreen('countdown'); 
       }
     } catch (error) { console.error(error); alert('Koneksi Error.'); }
@@ -301,6 +312,7 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
+  // --- TIMING LOGIC ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -401,6 +413,7 @@ const UTBKStudentApp = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">Liezira</span></p></div>);
 
+  // --- ANALYSIS DASHBOARD (Responsive & Optimized for Mobile) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -438,59 +451,57 @@ const UTBKStudentApp = () => {
           prediction = "Butuh Latihan Ekstra";
       }
 
+      // --- LOGIC TEMPO IDEAL (SAME AS LEADERBOARD GLOBAL TIME) ---
       const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalQuestionsCount = SUBTESTS.reduce((acc, curr) => acc + curr.questions, 0);
-      const allocatedSeconds = totalAllocatedMinutes * 60;
-      const timeSpent = allocatedSeconds - timeLeft; 
-      const avgTimePerQuestion = timeSpent / totalQuestionsCount;
-
-      let speedAnalysisTitle = "Tempo Ideal";
-      let speedAnalysisDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
-
-      if (avgTimePerQuestion < 45) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Terburu-buru (Rushing)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal. Kamu mengerjakan terlalu cepat sehingga banyak kesalahan. Teliti lagi.`;
+      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
+      
+      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : (totalAllocatedSeconds * 1000);
+      const remainingSeconds = Math.max(0, totalAllocatedSeconds - Math.floor(usedTimeMS / 1000));
+      
+      // Analyze Tempo based on Remaining Time + Score
+      let tempoStatus = "Tempo Ideal";
+      let tempoDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
+      
+      if (remainingSeconds > 3600) { // Lebih dari 1 jam sisa
+          if (totalScore < 300) {
+              tempoStatus = "Terlalu Cepat";
+              tempoDesc = "Sisa waktu banyak tapi skor rendah. Kurang teliti.";
           } else {
-              speedAnalysisTitle = "Sangat Efisien (Mastery)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion)} detik/soal dengan akurasi tinggi. Kamu sangat menguasai materi ini.`;
+              tempoStatus = "Sangat Efisien";
+              tempoDesc = "Cepat dan skor bagus! Pertahankan.";
           }
-      } else if (avgTimePerQuestion > 180) {
-          if (totalScore < 500) {
-              speedAnalysisTitle = "Stuck (Terlalu Lama)";
-              speedAnalysisDesc = `Rata-rata ${Math.round(avgTimePerQuestion / 60)} menit/soal. Jangan terpaku pada soal sulit terlalu lama.`;
-          } else {
-              speedAnalysisTitle = "Deep Thinker";
-              speedAnalysisDesc = "Kamu butuh waktu lama tapi hasilnya akurat. Coba latih kecepatan agar semua soal terkejar.";
-          }
+      } else if (remainingSeconds < 600 && remainingSeconds > 0) { // Kurang dari 10 menit
+          tempoStatus = "Hampir Habis";
+          tempoDesc = "Waktu mepet. Perbaiki manajemen waktu di soal sulit.";
       }
 
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
+              {/* HERO CARD - Responsive Flex */}
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
                   <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
                   
-                  <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-8">
+                  <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6 md:gap-8">
                       <div className="text-center lg:text-left flex-1 space-y-4">
                           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
                               <span className={`w-2 h-2 rounded-full ${badgeColor} shadow-[0_0_10px_currentColor]`}></span>
                               <span className="text-xs font-bold uppercase tracking-widest text-indigo-200">Status: {prediction}</span>
                           </div>
                           
-                          <h2 className="text-3xl md:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">
+                          <h2 className="text-2xl md:text-3xl lg:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">
                               {motivation}
                           </h2>
-                          <p className="text-indigo-200 text-sm md:text-base max-w-xl opacity-90">
+                          <p className="text-indigo-200 text-xs md:text-sm lg:text-base max-w-xl opacity-90">
                               Hasil ini adalah cerminan pemahamanmu saat ini. Gunakan data di bawah untuk strategi belajar selanjutnya.
                           </p>
                       </div>
 
                       <div className="relative group">
                           <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-20 rounded-full group-hover:opacity-30 transition duration-1000"></div>
-                          <div className="bg-white/5 p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[240px] relative z-10">
+                          <div className="bg-white/5 p-6 md:p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[200px] md:min-w-[240px] relative z-10">
                               <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Total Skor Akhir</span>
-                              <div className="text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
+                              <div className="text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
                                   {totalScore}
                               </div>
                               <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">
@@ -502,17 +513,18 @@ const UTBKStudentApp = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* LEFT: DONUT CHART */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                       <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                           <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
                       </div>
                       
                       <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
-                          <div className="relative w-40 h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
-                               style={{ background: `conic-gradient(#4f46e5 0% ${tpsPercent}%, #7c3aed ${tpsPercent}% 100%)` }}>
-                              <div className="w-28 h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
-                                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Dominasi</span>
-                                  <span className={`text-xl font-black ${tpsPercent > litPercent ? 'text-indigo-600' : 'text-violet-600'}`}>
+                          <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
+                               style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #f97316 ${tpsPercent}% 100%)` }}>
+                              <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
+                                  <span className="text-[10px] md:text-xs text-slate-400 font-bold uppercase tracking-wider">DOMINASI</span>
+                                  <span className={`text-lg md:text-xl font-black ${tpsPercent > litPercent ? 'text-blue-600' : 'text-orange-600'}`}>
                                       {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
                                   </span>
                               </div>
@@ -521,20 +533,21 @@ const UTBKStudentApp = () => {
                           <div className="space-y-4 w-full max-w-xs">
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-indigo-600 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-indigo-600 mt-1">{tpsTotal} Poin</div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-600 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-blue-600 mt-1">{tpsTotal} Poin</div>
                               </div>
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-violet-600 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-violet-600 mt-1">{litTotal} Poin</div>
+                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-orange-500 rounded-full"></div></div>
+                                  <div className="text-right text-xs font-mono font-bold text-orange-600 mt-1">{litTotal} Poin</div>
                               </div>
                           </div>
                       </div>
                   </div>
 
+                  {/* RIGHT: RECOMMENDATION & TEMPO */}
                   <div className="flex flex-col gap-6">
-                      <div className="bg-gradient-to-r from-orange-50 to-orange-100 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
+                      <div className="bg-orange-50 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
                           <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
                               <Lightbulb size={24}/>
                           </div>
@@ -552,18 +565,19 @@ const UTBKStudentApp = () => {
                           <div className="flex items-center gap-3">
                               <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
                               <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">{speedAnalysisTitle}</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">{speedAnalysisDesc}</p>
+                                  <h4 className="font-bold text-slate-700 text-sm">{tempoStatus}</h4>
+                                  <p className="text-xs text-slate-500 max-w-[200px]">{tempoDesc}</p>
                               </div>
                           </div>
                           <div className="text-right">
-                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(timeLeft)}</span>
-                              <span className="text-xs text-slate-400 block">Sisa Waktu</span>
+                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(remainingSeconds)}</span>
+                              <span className="text-xs text-slate-400 block">Sisa Waktu Global</span>
                           </div>
                       </div>
                   </div>
               </div>
 
+              {/* DETAILED SUBTEST PERFORMANCE */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
@@ -612,7 +626,7 @@ const UTBKStudentApp = () => {
                                               <div className="w-full bg-slate-100 rounded-full h-2">
                                                   <div 
                                                       className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
-                                                      style={{ width: `${Math.min(100, (score/250)*100)}%` }}
+                                                      style={{ width: `${Math.min(100, Math.abs(score/3))}%` }}
                                                   ></div>
                                               </div>
                                           </div>
@@ -694,7 +708,7 @@ const UTBKStudentApp = () => {
     return (
       <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
-          <h1 className="text-3xl font-bold mb-2 text-indigo-900">Hasil Ujian</h1>
+          <h1 className="text-3xl font-bold mb-2 text-indigo-900 hidden">Hasil Ujian</h1>
           <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
           {violationReason && (
             <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
@@ -705,7 +719,7 @@ const UTBKStudentApp = () => {
           
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 my-8 text-left">
+          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
             <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
             {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
                 <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
