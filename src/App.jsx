@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin, AlertOctagon, AlertTriangle } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -46,13 +46,17 @@ const UTBKStudentApp = () => {
   const [testOrder, setTestOrder] = useState([]);
   const [questionOrder, setQuestionOrder] = useState({});
   const [breakTime, setBreakTime] = useState(10); 
-  const [countdownTime, setCountdownTime] = useState(5); // CHANGED TO 5 SECONDS
+  const [countdownTime, setCountdownTime] = useState(5);
   const [bankSoal, setBankSoal] = useState({});
-  
+   
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   const [violationReason, setViolationReason] = useState(null);
+
+  // --- SECURITY STATES ---
+  const [violationCount, setViolationCount] = useState(0);
+  const [isPaused, setIsPaused] = useState(false); // SP 1 Trigger
 
   const screenRef = useRef(screen); 
   const timerRef = useRef(null);
@@ -61,7 +65,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- SESSION RESTORE ---
+  // --- SESSION RESTORE & AUTO SAVE LOAD ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -84,9 +88,16 @@ const UTBKStudentApp = () => {
                             if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
-                        } 
+                        } else {
+                            // --- RESTORE JAWABAN DARI LOCALSTORAGE ---
+                            const savedAnswers = localStorage.getItem(`answers_${savedToken}`);
+                            if (savedAnswers) {
+                                setAnswers(JSON.parse(savedAnswers));
+                            }
+                        }
                     } else {
                         localStorage.removeItem('utbk_student_token');
+                        localStorage.removeItem(`answers_${savedToken}`);
                     }
                 }
             } catch (error) { console.error(error); }
@@ -112,27 +123,48 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- SECURITY (OPTIMIZED FOR MOBILE) ---
+  // --- SECURITY SYSTEM (SP 1 & SP 2 LOGIC) ---
   useEffect(() => {
-    const forceSubmit = (reason) => {
-        // Active on test, countdown, and break screens
+    const handleViolation = (reason) => {
+        // Hanya aktif di layar ujian, countdown, atau break
         if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
-            setViolationReason(reason);
-            setScreen('result');
-            if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+            
+            // Jika sedang kena SP 1 (Paused), jangan hitung pelanggaran lagi biar ga numpuk
+            if (isPaused) return;
+
+            setViolationCount(prev => {
+                const newCount = prev + 1;
+                
+                if (newCount === 1) {
+                    // --- SP 1: PERINGATAN KERAS (PAUSE) ---
+                    setIsPaused(true);
+                    // Usaha kembalikan fullscreen
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(()=>{});
+                    }
+                } else if (newCount >= 2) {
+                    // --- SP 2: AUTO SUBMIT (DISKUALIFIKASI) ---
+                    setViolationReason(reason + " (Pelanggaran ke-2)");
+                    setScreen('result');
+                    if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+                }
+                return newCount;
+            });
         }
     };
 
-    const handleVisibilityChange = () => { if (document.hidden) forceSubmit("DISKUALIFIKASI: Pindah Tab / Minimize Terdeteksi."); };
+    const handleVisibilityChange = () => { 
+        if (document.hidden) handleViolation("DISKUALIFIKASI: Pindah Tab / Minimize."); 
+    };
     
     const handleFullscreenChange = () => { 
         if (!document.fullscreenElement && (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break')) {
-            forceSubmit("DISKUALIFIKASI: Keluar dari Mode Fullscreen."); 
+            handleViolation("DISKUALIFIKASI: Keluar Mode Fullscreen."); 
         }
     };
     
-    // NOTE: 'blur' listener REMOVED to make it less sensitive on Mobile.
-    // Mobile users trigger 'blur' easily (e.g., pulling down notification bar), which shouldn't immediately disqualify them.
+    // NOTE: 'blur' dihilangkan agar tombol Windows/Notifikasi sesaat tidak langsung men-trigger pelanggaran.
+    // Kita hanya menghukum jika user benar-benar pindah tab/minimize window.
 
     const handleKeyDown = (e) => {
       if (
@@ -140,7 +172,7 @@ const UTBKStudentApp = () => {
           (e.altKey && e.key === 'Tab') || (e.metaKey) || (e.ctrlKey && e.key === 'u')
       ) {
         e.preventDefault();
-        alert('⚠️ PERINGATAN: Tombol Dilarang!');
+        alert('⚠️ Tombol Dilarang!');
       }
     };
 
@@ -157,7 +189,7 @@ const UTBKStudentApp = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, []); 
+  }, [isPaused]); // Dependency isPaused penting agar state terbaca benar
 
   // --- LOAD SOAL ---
   useEffect(() => {
@@ -187,7 +219,6 @@ const UTBKStudentApp = () => {
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
             
-            // Global Time Calculation
             const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
             const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
 
@@ -202,6 +233,9 @@ const UTBKStudentApp = () => {
                     answers: answers,
                     historyQuestions: questionOrder 
                 });
+
+                // Hapus jawaban lokal setelah berhasil submit
+                localStorage.removeItem(`answers_${currentTokenCode}`);
 
                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
                 const querySnapshot = await getDocs(q);
@@ -276,6 +310,8 @@ const UTBKStudentApp = () => {
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
+        setViolationCount(0); // Reset violation count
+        setIsPaused(false);   // Reset pause state
         try { await document.documentElement.requestFullscreen(); } catch (err) {}
         setCountdownTime(5); 
         setScreen('countdown'); 
@@ -301,7 +337,12 @@ const UTBKStudentApp = () => {
     
     setCurrentSubtestIndex(0); 
     setCurrentQuestion(0); 
-    setAnswers({}); 
+    
+    // Cek LocalStorage kalau ada jawaban sebelumnya
+    const saved = localStorage.getItem(`answers_${currentTokenCode}`);
+    if(saved) setAnswers(JSON.parse(saved));
+    else setAnswers({}); 
+
     setDoubtful({}); 
     
     const durationSec = shuffledSubtests[0].time * 60;
@@ -351,14 +392,23 @@ const UTBKStudentApp = () => {
   
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
-      if (type === 'pilihan_majemuk') {
-          let current = answers[k] || [];
-          if (current.includes(val)) current = current.filter(x => x !== val);
-          else current.push(val);
-          setAnswers(p => ({ ...p, [k]: current }));
-      } else {
-          setAnswers(p => ({ ...p, [k]: val })); 
-      }
+      
+      setAnswers(prev => {
+          let newAnswers = { ...prev };
+          if (type === 'pilihan_majemuk') {
+              let current = newAnswers[k] || [];
+              if (current.includes(val)) current = current.filter(x => x !== val);
+              else current.push(val);
+              newAnswers[k] = current;
+          } else {
+              newAnswers[k] = val; 
+          }
+          
+          // --- SIMPAN KE LOCALSTORAGE SETIAP KLIK ---
+          localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
+          
+          return newAnswers;
+      });
   };
 
   const calculateScore = () => { 
@@ -451,18 +501,17 @@ const UTBKStudentApp = () => {
           prediction = "Butuh Latihan Ekstra";
       }
 
-      // --- LOGIC TEMPO IDEAL (SAME AS LEADERBOARD GLOBAL TIME) ---
+      // --- LOGIC TEMPO IDEAL ---
       const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
       const totalAllocatedSeconds = totalAllocatedMinutes * 60;
       
       const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : (totalAllocatedSeconds * 1000);
       const remainingSeconds = Math.max(0, totalAllocatedSeconds - Math.floor(usedTimeMS / 1000));
       
-      // Analyze Tempo based on Remaining Time + Score
       let tempoStatus = "Tempo Ideal";
       let tempoDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
       
-      if (remainingSeconds > 3600) { // Lebih dari 1 jam sisa
+      if (remainingSeconds > 3600) { 
           if (totalScore < 300) {
               tempoStatus = "Terlalu Cepat";
               tempoDesc = "Sisa waktu banyak tapi skor rendah. Kurang teliti.";
@@ -470,7 +519,7 @@ const UTBKStudentApp = () => {
               tempoStatus = "Sangat Efisien";
               tempoDesc = "Cepat dan skor bagus! Pertahankan.";
           }
-      } else if (remainingSeconds < 600 && remainingSeconds > 0) { // Kurang dari 10 menit
+      } else if (remainingSeconds < 600 && remainingSeconds > 0) { 
           tempoStatus = "Hampir Habis";
           tempoDesc = "Waktu mepet. Perbaiki manajemen waktu di soal sulit.";
       }
@@ -478,7 +527,6 @@ const UTBKStudentApp = () => {
       return (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
               
-              {/* HERO CARD - Responsive Flex */}
               <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
                   <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
                   
@@ -513,7 +561,6 @@ const UTBKStudentApp = () => {
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* LEFT: DONUT CHART */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                       <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                           <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
@@ -545,7 +592,6 @@ const UTBKStudentApp = () => {
                       </div>
                   </div>
 
-                  {/* RIGHT: RECOMMENDATION & TEMPO */}
                   <div className="flex flex-col gap-6">
                       <div className="bg-orange-50 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
                           <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0">
@@ -577,7 +623,6 @@ const UTBKStudentApp = () => {
                   </div>
               </div>
 
-              {/* DETAILED SUBTEST PERFORMANCE */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                   <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                       <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Rincian Performa Subtes</h4>
@@ -645,6 +690,41 @@ const UTBKStudentApp = () => {
           </div>
       );
   };
+
+  // --- TAMPILAN JIKA KENA SP 1 (Pause) ---
+  if (isPaused) {
+    return (
+      <div className="fixed inset-0 z-50 bg-red-900/95 flex items-center justify-center p-6 text-center font-sans backdrop-blur-sm select-none">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-red-500 animate-pulse">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertOctagon className="text-red-600 w-10 h-10" />
+          </div>
+          <h2 className="text-3xl font-black text-red-600 mb-2">PELANGGARAN DETEKSI!</h2>
+          <p className="text-gray-700 font-medium mb-6">
+            Anda terdeteksi meninggalkan layar ujian (Switch Tab / Minimize / Keluar Fullscreen).
+          </p>
+          <div className="bg-red-50 border border-red-200 p-4 rounded-xl text-left mb-6">
+            <p className="text-red-800 text-sm font-bold flex items-center gap-2">
+              <AlertTriangle size={16}/> SANKSI PERINGATAN (SP 1):
+            </p>
+            <ul className="list-disc list-inside text-red-700 text-sm mt-1">
+              <li>Waktu ujian <b>TETAP BERJALAN</b> selama layar ini muncul.</li>
+              <li>Jika melakukan pelanggaran lagi, ujian <b>OTOMATIS DIKUMPULKAN (DISKUALIFIKASI)</b>.</li>
+            </ul>
+          </div>
+          <button 
+            onClick={() => {
+              setIsPaused(false);
+              document.documentElement.requestFullscreen().catch(()=>{});
+            }} 
+            className="w-full py-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition shadow-lg"
+          >
+            SAYA MENGERTI & LANJUTKAN
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (screen === 'countdown') {
     return (
