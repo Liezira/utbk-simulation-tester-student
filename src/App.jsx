@@ -411,6 +411,7 @@ const UTBKStudentApp = () => {
               newAnswers[k] = val; 
           }
           
+          // 🔥 SIMPAN KE LOCALSTORAGE SETIAP KLIK
           localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
           return newAnswers;
       });
