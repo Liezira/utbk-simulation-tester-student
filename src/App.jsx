@@ -56,7 +56,7 @@ const UTBKStudentApp = () => {
 
   // --- SECURITY STATES ---
   const [violationCount, setViolationCount] = useState(0);
-  const [isPaused, setIsPaused] = useState(false); // SP 1 Trigger
+  const [isPaused, setIsPaused] = useState(false); 
 
   const screenRef = useRef(screen); 
   const timerRef = useRef(null);
@@ -65,7 +65,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- SESSION RESTORE & AUTO SAVE LOAD ---
+  // --- 1. SESSION RESTORE (LOGIKA PINTAR: 24 Jam vs 60 Hari) ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -77,27 +77,43 @@ const UTBKStudentApp = () => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
                     const createdTime = new Date(data.createdAt).getTime();
+                    const now = Date.now();
                     const oneDay = 24 * 60 * 60 * 1000;
+                    const sixtyDays = 60 * 24 * 60 * 60 * 1000;
                     
-                    if ((Date.now() - createdTime) < oneDay) {
-                        setStudentName(data.studentName);
-                        setCurrentTokenCode(savedToken);
-                        
-                        if (data.status === 'used' && data.score !== undefined) {
+                    // A. JIKA SUDAH SELESAI (STATUS USED)
+                    if (data.status === 'used' && data.score !== undefined) {
+                        // Cek apakah sudah lewat 60 hari?
+                        if ((now - createdTime) > sixtyDays) {
+                            // Hapus sesi jika > 60 hari
+                            localStorage.removeItem('utbk_student_token');
+                            localStorage.removeItem(`answers_${savedToken}`);
+                        } else {
+                            // Masih dalam 60 hari -> Tampilkan Hasil
+                            setStudentName(data.studentName);
+                            setCurrentTokenCode(savedToken);
                             setAnswers(data.answers || {});
                             if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
-                        } else {
-                            // --- RESTORE JAWABAN DARI LOCALSTORAGE ---
+                        }
+                    } 
+                    // B. JIKA BELUM SELESAI (ACTIVE)
+                    else {
+                        // Cek apakah token > 24 Jam?
+                        if ((now - createdTime) < oneDay) {
+                            // Masih < 24 jam -> Restore Ujian
+                            setStudentName(data.studentName);
+                            setCurrentTokenCode(savedToken);
                             const savedAnswers = localStorage.getItem(`answers_${savedToken}`);
                             if (savedAnswers) {
                                 setAnswers(JSON.parse(savedAnswers));
                             }
+                        } else {
+                            // Sudah > 24 jam dan belum selesai -> Hapus sesi (Expired)
+                            localStorage.removeItem('utbk_student_token');
+                            localStorage.removeItem(`answers_${savedToken}`);
                         }
-                    } else {
-                        localStorage.removeItem('utbk_student_token');
-                        localStorage.removeItem(`answers_${savedToken}`);
                     }
                 }
             } catch (error) { console.error(error); }
@@ -123,30 +139,23 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- SECURITY SYSTEM (SP 1 & SP 2 LOGIC) ---
+  // --- SECURITY SYSTEM ---
   useEffect(() => {
     const handleViolation = (reason) => {
-        // 🔥 AMAN: Jika di halaman Landing atau Result, matikan sistem keamanan
         if (screenRef.current === 'result' || screenRef.current === 'landing') return;
 
-        // Hanya aktif di layar ujian, countdown, atau break
         if (screenRef.current === 'test' || screenRef.current === 'countdown' || screenRef.current === 'break') {
-            
-            // Jika sedang kena SP 1 (Paused), jangan hitung pelanggaran lagi
             if (isPaused) return;
 
             setViolationCount(prev => {
                 const newCount = prev + 1;
                 
                 if (newCount === 1) {
-                    // --- SP 1: PERINGATAN KERAS (PAUSE) ---
                     setIsPaused(true);
-                    // Usaha kembalikan fullscreen
                     if (!document.fullscreenElement) {
                         document.documentElement.requestFullscreen().catch(()=>{});
                     }
                 } else if (newCount >= 2) {
-                    // --- SP 2: AUTO SUBMIT (DISKUALIFIKASI) ---
                     setViolationReason(reason + " (Pelanggaran ke-2)");
                     setScreen('result');
                     if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
@@ -167,7 +176,6 @@ const UTBKStudentApp = () => {
     };
     
     const handleKeyDown = (e) => {
-      // 🔥 AMAN: Boleh tekan tombol apa saja di Result/Landing
       if (screenRef.current === 'result' || screenRef.current === 'landing') return;
 
       if (
@@ -180,7 +188,6 @@ const UTBKStudentApp = () => {
     };
 
     const handleContextMenu = (e) => {
-        // 🔥 AMAN: Boleh klik kanan di Result/Landing
         if (screenRef.current === 'result' || screenRef.current === 'landing') return;
         e.preventDefault();
     };
@@ -215,7 +222,7 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  // --- FINISH EXAM & LEADERBOARD LOGIC ---
+  // --- FINISH EXAM ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
@@ -241,7 +248,6 @@ const UTBKStudentApp = () => {
                     historyQuestions: questionOrder 
                 });
 
-                // Hapus jawaban lokal setelah berhasil submit
                 localStorage.removeItem(`answers_${currentTokenCode}`);
 
                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
@@ -282,7 +288,7 @@ const UTBKStudentApp = () => {
     }
   }, [screen]); 
 
-  // --- TOKEN LOGIN ---
+  // --- 2. TOKEN LOGIN (LOGIKA PINTAR: Prioritas Status Used) ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -294,13 +300,19 @@ const UTBKStudentApp = () => {
       
       const data = docSnap.data();
       const createdTime = new Date(data.createdAt).getTime();
+      const now = Date.now();
       const oneDay = 24 * 60 * 60 * 1000;
-      if ((Date.now() - createdTime) > oneDay) { 
-          alert('Token SUDAH KADALUARSA (Expired > 24 Jam).'); return; 
-      }
+      const sixtyDays = 60 * 24 * 60 * 60 * 1000;
 
+      // KONDISI 1: SUDAH SELESAI (Status 'used')
+      // Logika: Tetap boleh masuk asalkan < 60 Hari dari pembuatan token
       if (data.status === 'used') {
-          alert(`Halo ${data.studentName}, Anda sudah menyelesaikan ujian ini.`);
+          if ((now - createdTime) > sixtyDays) {
+              alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
+              return;
+          }
+          
+          alert(`Halo ${data.studentName}, menampilkan kembali hasil ujian Anda.`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
@@ -311,6 +323,13 @@ const UTBKStudentApp = () => {
           return;
       }
 
+      // KONDISI 2: BELUM SELESAI TAPI KADALUARSA (Status 'active' tapi > 24 Jam)
+      if ((now - createdTime) > oneDay) { 
+          alert('Token SUDAH KADALUARSA (Expired > 24 Jam). Anda tidak bisa memulai ujian.'); 
+          return; 
+      }
+
+      // KONDISI 3: VALID & BELUM SELESAI -> MULAI UJIAN
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
         localStorage.setItem('utbk_student_token', tokenCode);
@@ -345,7 +364,6 @@ const UTBKStudentApp = () => {
     setCurrentSubtestIndex(0); 
     setCurrentQuestion(0); 
     
-    // Cek LocalStorage kalau ada jawaban sebelumnya
     const saved = localStorage.getItem(`answers_${currentTokenCode}`);
     if(saved) setAnswers(JSON.parse(saved));
     else setAnswers({}); 
@@ -411,7 +429,6 @@ const UTBKStudentApp = () => {
               newAnswers[k] = val; 
           }
           
-          // 🔥 SIMPAN KE LOCALSTORAGE SETIAP KLIK
           localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
           return newAnswers;
       });
@@ -697,7 +714,6 @@ const UTBKStudentApp = () => {
       );
   };
 
-  // --- TAMPILAN SP 1 (LAYAR MERAH) ---
   if (isPaused) {
     return (
       <div className="fixed inset-0 z-50 bg-red-900/95 flex items-center justify-center p-6 text-center font-sans backdrop-blur-sm select-none">
