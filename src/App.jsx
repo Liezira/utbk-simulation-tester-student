@@ -850,7 +850,6 @@ const UTBKStudentApp = () => {
             <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian (Metode IRT):</h3>
             <ul className="space-y-2 text-sm text-gray-600">
               <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Bobot Soal</span><span className="font-bold text-green-700">Dinamis</span></li>
-              <li className="flex justify-between bg-blue-50 px-2 py-1 rounded border border-blue-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-blue-600"/>Skala Nilai</span><span className="font-bold text-blue-700">200 - 1000</span></li>
               <li className="text-xs text-gray-400 mt-2 italic">*Nilai ditentukan berdasarkan tingkat kesulitan soal dan tipe soal.</li>
             </ul>
           </div>
