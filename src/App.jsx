@@ -423,7 +423,6 @@ const UTBKStudentApp = () => {
               alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
               return;
           }
-          alert(`Halo ${data.studentName}, menampilkan kembali hasil ujian Anda.`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
