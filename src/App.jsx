@@ -897,7 +897,7 @@ const UTBKStudentApp = () => {
           {/* --- TABEL SKOR LENGKAP (GAYA GAMBAR) --- */}
           <div className="w-full bg-white p-0 md:p-4 overflow-hidden mt-8 mb-8">
             <div className="text-center font-extrabold text-lg md:text-xl mb-4 uppercase text-gray-800 tracking-tight">
-              SKOR TRYOUT AKBAR UTBK SNBT 2026 DESEMBER
+              SKOR TRYOUT AKBAR UTBK SNBT 2026
             </div>
             
             <div className="overflow-x-auto border border-gray-800 shadow-md">
