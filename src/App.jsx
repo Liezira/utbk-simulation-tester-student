@@ -228,7 +228,7 @@ const UTBKStudentApp = () => {
         if (timerRef.current) clearInterval(timerRef.current);
 
         const finishExamProcess = async () => {
-            const { totalScore } = calculateScore();
+            const { totalScore, details } = calculateScore();
             
             const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
             const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
@@ -241,6 +241,7 @@ const UTBKStudentApp = () => {
                 await updateDoc(tokenRef, { 
                     status: 'used',
                     score: totalScore,
+                    scoreDetails: details,
                     finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
@@ -257,7 +258,12 @@ const UTBKStudentApp = () => {
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    top10.push({ rank, name: data.studentName, school: data.studentSchool || '-', score: data.score, timeLeft: data.finalTimeLeft });
+                    top10.push({ rank, 
+                        name: data.studentName, 
+                        school: data.studentSchool || '-', 
+                        score: data.score, 
+                        details: data.scoreDetails || {},
+                        timeLeft: data.finalTimeLeft });
                     if (data.tokenCode === currentTokenCode) userRank = rank;
                     rank++;
                 });
@@ -434,48 +440,80 @@ const UTBKStudentApp = () => {
       });
   };
 
-  const calculateScore = () => { 
-      const sc = {}; 
-      const cc = {}; 
-      let tot = 0; 
-      const orderToUse = testOrder.length > 0 ? testOrder : SUBTESTS;
+  // Ganti fungsi calculateScore yang lama dengan ini
+const calculateScore = () => { 
+    const details = {}; // Ini untuk menyimpan data detail per mapel
+    let totalIrtScore = 0;
+    
+    // Urutan mapel sesuai kolom di gambar
+    // Pastikan ID ini sesuai dengan SUBTESTS yang ada di config
+    const mapelOrder = ['pu', 'ppu', 'pk', 'pbm', 'lbi', 'lbe', 'pm']; 
 
-      orderToUse.forEach(s => { 
-          let sub = 0; 
-          let correctCount = 0; 
-          const questions = questionOrder[s.id] || [];
+    mapelOrder.forEach(id => {
+        // Cari config subtestnya
+        const s = SUBTESTS.find(item => item.id === id);
+        if(!s) return;
 
-          questions.forEach((q, i) => { 
-              const k = `${s.id}_${i}`; 
-              const ans = answers[k];
-              if (!ans || (Array.isArray(ans) && ans.length === 0) || (typeof ans === 'string' && ans.trim() === '')) {
-                  sub -= 1; 
-              } else {
-                  let isCorrect = false;
-                  if (q.type === 'pilihan_majemuk') {
-                      if (Array.isArray(ans) && Array.isArray(q.correct)) {
-                          const sortedAns = [...ans].sort().join(',');
-                          const sortedKey = [...q.correct].sort().join(',');
-                          isCorrect = (sortedAns === sortedKey);
-                      }
-                  } else if (q.type === 'isian') {
-                      if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
-                  } else { isCorrect = (ans === q.correct); }
+        let rawScore = 0; 
+        let maxRaw = 0;
+        let correctCount = 0; 
+        const questions = questionOrder[s.id] || [];
 
-                  if (isCorrect) {
-                      correctCount++;
-                      if (q.type === 'isian') sub += 6; 
-                      else if (q.type === 'pilihan_majemuk') sub += 5; 
-                      else sub += 3; 
-                  } else { sub += 0; }
-              }
-          }); 
-          sc[s.id] = sub; 
-          cc[s.id] = correctCount;
-          tot += sub; 
-      }); 
-      return { scores: sc, totalScore: tot, correctCounts: cc }; 
-  };
+        questions.forEach((q, i) => { 
+            const k = `${s.id}_${i}`; 
+            const ans = answers[k];
+            
+            // Logika IRT Sederhana (Bobot Kesulitan)
+            const difficulty = getQuestionDifficulty(q, i); // Pakai helper yg sebelumnya dibuat
+            const weight = getWeight(difficulty);
+            
+            let typeMultiplier = 1;
+            if (q.type === 'isian') typeMultiplier = 1.5;
+            
+            const itemValue = weight * typeMultiplier;
+            maxRaw += itemValue;
+
+            // Cek Jawaban
+            let isCorrect = false;
+            if (ans) {
+                if (q.type === 'pilihan_majemuk') {
+                    if (Array.isArray(ans) && Array.isArray(q.correct)) {
+                        const sortedAns = [...ans].sort().join(',');
+                        const sortedKey = [...q.correct].sort().join(',');
+                        isCorrect = (sortedAns === sortedKey);
+                    }
+                } else if (q.type === 'isian') {
+                    if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
+                } else { isCorrect = (ans === q.correct); }
+            }
+
+            if (isCorrect) {
+                correctCount++;
+                rawScore += itemValue;
+            }
+        }); 
+
+        // Hitung Skor Skala 1000 per Mapel
+        const ratio = maxRaw > 0 ? (rawScore / maxRaw) : 0;
+        const irtScore = Math.round(200 + (ratio * 800)); // Range 200 - 1000
+        
+        totalIrtScore += irtScore;
+
+        // SIMPAN DETAIL KE OBJECT
+        details[id] = {
+            b: correctCount, // Jumlah Benar
+            skor: irtScore   // Skor IRT
+        };
+    }); 
+
+    // Rata-rata Total
+    const finalAverageScore = Math.round(totalIrtScore / mapelOrder.length);
+
+    return { 
+        totalScore: finalAverageScore, 
+        details: details // Data lengkap untuk tabel
+    }; 
+};
   
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
@@ -805,13 +843,13 @@ const UTBKStudentApp = () => {
       </div>
     );
   }
-
-  if (screen === 'result') {
+if (screen === 'result') {
     return (
-      <div className="min-h-screen bg-gray-50 p-8 flex justify-center items-center select-none overflow-y-auto">
-        <div className="bg-white p-8 rounded-xl shadow-2xl max-w-4xl w-full text-center my-8">
+      <div className="min-h-screen bg-gray-50 p-4 md:p-8 flex justify-center items-center select-none overflow-y-auto">
+        <div className="bg-white p-4 md:p-8 rounded-xl shadow-2xl max-w-[95%] w-full text-center my-8">
           <h1 className="text-3xl font-bold mb-2 text-indigo-900 hidden">Hasil Ujian</h1>
           <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
+          
           {violationReason && (
             <div className="bg-red-100 border-2 border-red-400 text-red-800 p-4 rounded-lg mb-6 font-bold animate-pulse">
                <div className="flex items-center justify-center gap-2 text-lg"><ShieldAlert size={24} /> UJIAN DIHENTIKAN OTOMATIS</div>
@@ -821,13 +859,91 @@ const UTBKStudentApp = () => {
           
           <AnalysisDashboard />
 
-          <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 mb-8 text-left">
-            <div className="flex items-center gap-3 mb-4"><Trophy className="text-yellow-600" size={24} /><h3 className="text-lg font-bold text-indigo-900">🏆 Top 10 Leaderboard</h3></div>
-            {leaderboard.length === 0 ? (<p className="text-gray-500 text-center italic py-4">Memuat peringkat...</p>) : (
-                <div className="overflow-x-auto rounded-lg border border-indigo-100 shadow-sm"><table className="min-w-full bg-white text-sm"><thead className="bg-indigo-100 text-indigo-700 whitespace-nowrap"><tr><th className="py-3 px-4 text-left">#</th><th className="py-3 px-4 text-left">Nama Siswa</th><th className="py-3 px-4 text-left">Asal Sekolah</th><th className="py-3 px-4 text-center">Skor</th><th className="py-3 px-4 text-center">Sisa Waktu Global</th></tr></thead><tbody className="divide-y divide-indigo-50 whitespace-nowrap">{leaderboard.map((item, index) => (<tr key={index} className={`${item.name === studentName ? 'bg-yellow-50 font-bold border-l-4 border-yellow-400' : 'hover:bg-gray-50'}`}><td className="py-2 px-4">{item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}</td><td className="py-2 px-4">{item.name} {item.name === studentName && '(Kamu)'}</td><td className="py-2 px-4 text-gray-600">{item.school}</td><td className="py-2 px-4 text-center text-indigo-600">{item.score}</td><td className="py-2 px-4 text-center text-gray-500 font-mono">{formatTime(item.timeLeft)}</td></tr>))}</tbody></table></div>
-            )}
-            <div className="mt-4 text-center">{myRank ? (<div className="inline-block bg-green-100 text-green-800 px-4 py-2 rounded-full font-bold text-sm border border-green-200">🎉 Hebat! Kamu peringkat {myRank} dari seluruh peserta.</div>) : (<div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">Kamu belum masuk Top 10. Tetap semangat!</div>)}</div>
+          {/* --- TABEL SKOR LENGKAP (GAYA GAMBAR) --- */}
+          <div className="w-full bg-white p-0 md:p-4 overflow-hidden mt-8 mb-8">
+            <div className="text-center font-extrabold text-lg md:text-xl mb-4 uppercase text-gray-800 tracking-tight">
+              SKOR TRYOUT AKBAR UTBK SNBT 2026 DESEMBER
+            </div>
+            
+            <div className="overflow-x-auto border border-gray-800 shadow-md">
+              <table className="min-w-full text-[10px] md:text-xs border-collapse">
+                <thead>
+                  {/* Header Baris 1: Judul Mapel */}
+                  <tr className="bg-teal-700 text-white font-bold text-center uppercase tracking-wider">
+                    <th rowSpan="2" className="border border-white p-2 w-8">No</th>
+                    <th rowSpan="2" className="border border-white p-2 min-w-[120px]">Nama</th>
+                    <th rowSpan="2" className="border border-white p-2 min-w-[100px]">Sekolah</th>
+                    
+                    <th colSpan="2" className="border border-white p-1">PU</th>
+                    <th colSpan="2" className="border border-white p-1">PPU</th>
+                    <th colSpan="2" className="border border-white p-1">PK</th>
+                    <th colSpan="2" className="border border-white p-1">PBM</th>
+                    <th colSpan="2" className="border border-white p-1">Lit. B. Indo</th>
+                    <th colSpan="2" className="border border-white p-1">Lit. B. Ing</th>
+                    <th colSpan="2" className="border border-white p-1">PM</th>
+                    
+                    <th rowSpan="2" className="border border-white p-2 w-16 bg-teal-800">Rata-rata</th>
+                  </tr>
+                  
+                  {/* Header Baris 2: B & SKOR */}
+                  <tr className="bg-teal-600 text-white font-bold text-center text-[9px] uppercase">
+                    {Array(7).fill(null).map((_, i) => (
+                      <React.Fragment key={i}>
+                        <th className="border border-white px-1 py-1 min-w-[25px]">B</th>
+                        <th className="border border-white px-1 py-1 min-w-[35px]">Skor</th>
+                      </React.Fragment>
+                    ))}
+                  </tr>
+                </thead>
+                
+                <tbody className="text-gray-900 bg-white font-medium">
+                  {leaderboard.length === 0 ? (
+                    <tr><td colSpan="18" className="p-6 text-center text-gray-500 italic">Memuat data peringkat...</td></tr>
+                  ) : leaderboard.map((row, idx) => {
+                    // Helper aman ambil data (antisipasi undefined)
+                    const getVal = (id, type) => row.details?.[id]?.[type] || 0;
+                    const isMe = row.name === studentName;
+                    
+                    return (
+                      <tr key={idx} className={`text-center transition-colors ${isMe ? 'bg-yellow-100 font-bold border-2 border-yellow-400' : (idx % 2 === 0 ? 'bg-white' : 'bg-gray-100')} hover:bg-yellow-50`}>
+                        <td className="border border-gray-400 p-2">{row.rank}</td>
+                        <td className="border border-gray-400 p-2 text-left truncate max-w-[150px]" title={row.name}>
+                          {row.name} {isMe && '(Kamu)'}
+                        </td>
+                        <td className="border border-gray-400 p-2 text-left truncate max-w-[120px]" title={row.school}>
+                          {row.school}
+                        </td>
+                        
+                        {/* Loop render kolom nilai per mapel */}
+                        {['pu', 'ppu', 'pk', 'pbm', 'lbi', 'lbe', 'pm'].map(id => (
+                          <React.Fragment key={id}>
+                            <td className="border border-gray-400 p-1">{getVal(id, 'b')}</td>
+                            <td className="border border-gray-400 p-1 text-teal-800">{getVal(id, 'skor')}</td>
+                          </React.Fragment>
+                        ))}
+                        
+                        {/* Rata-rata */}
+                        <td className="border border-gray-400 p-2 font-bold bg-teal-50 text-teal-900">{row.score}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            
+            <div className="mt-4 text-center">
+              {myRank ? (
+                <div className="inline-block bg-teal-100 text-teal-800 px-4 py-2 rounded-full font-bold text-sm border border-teal-200 shadow-sm">
+                  🎉 Selamat! Kamu peringkat <span className="text-lg">{myRank}</span> dari seluruh peserta.
+                </div>
+              ) : (
+                <div className="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm border border-gray-200">
+                  Kamu belum masuk Top 10. Terus tingkatkan performamu!
+                </div>
+              )}
+            </div>
           </div>
+          {/* --- END TABEL SKOR --- */}
 
           <div className="border-t pt-6 space-y-4">
             <button onClick={() => { document.exitFullscreen().catch(()=>{}); localStorage.removeItem('utbk_student_token'); setScreen('landing'); setInputToken(''); setStudentName(''); }} className="w-full bg-red-50 text-red-600 border-2 border-red-100 py-4 rounded-xl font-bold hover:bg-red-100 transition">Selesai / Logout</button>
@@ -837,7 +953,7 @@ const UTBKStudentApp = () => {
       </div>
     );
   }
-
+  
   const currentSubtest = testOrder[currentSubtestIndex];
   if (!currentSubtest || !questionOrder[currentSubtest.id]) return <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div><p>Memuat soal...</p></div>;
   const currentQ = questionOrder[currentSubtest.id][currentQuestion];
