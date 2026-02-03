@@ -31,6 +31,28 @@ const SUBTESTS = [
   { id: 'pm', name: 'Penalaran Matematika', questions: 20, time: 30 },
 ];
 
+// --- IRT HELPER FUNCTIONS (NEW) ---
+const getQuestionDifficulty = (question, index) => {
+    // Simulasi: Jika tidak ada field difficulty di DB, gunakan pola urutan
+    if (question.difficulty) {
+        if (question.difficulty === 'hard') return 3;
+        if (question.difficulty === 'medium') return 2;
+        return 1;
+    }
+    // Simulasi logic: Kelipatan 3 = Hard, Genap = Medium, Ganjil = Easy
+    if ((index + 1) % 3 === 0) return 3; 
+    if ((index + 1) % 2 === 0) return 2; 
+    return 1; 
+};
+
+const getWeight = (difficultyLevel) => {
+    switch (difficultyLevel) {
+        case 3: return 2.0; // Hard
+        case 2: return 1.5; // Medium
+        default: return 1.0; // Easy
+    }
+};
+
 const UTBKStudentApp = () => {
   const [screen, setScreen] = useState('landing');
   const [studentName, setStudentName] = useState('');
@@ -48,7 +70,7 @@ const UTBKStudentApp = () => {
   const [breakTime, setBreakTime] = useState(10); 
   const [countdownTime, setCountdownTime] = useState(5);
   const [bankSoal, setBankSoal] = useState({});
-   
+    
   const [globalStartTime, setGlobalStartTime] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
@@ -65,7 +87,7 @@ const UTBKStudentApp = () => {
     screenRef.current = screen;
   }, [screen]);
 
-  // --- 1. SESSION RESTORE (LOGIKA PINTAR: 24 Jam vs 60 Hari) ---
+  // --- 1. SESSION RESTORE ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -81,15 +103,11 @@ const UTBKStudentApp = () => {
                     const oneDay = 24 * 60 * 60 * 1000;
                     const sixtyDays = 60 * 24 * 60 * 60 * 1000;
                     
-                    // A. JIKA SUDAH SELESAI (STATUS USED)
                     if (data.status === 'used' && data.score !== undefined) {
-                        // Cek apakah sudah lewat 60 hari?
                         if ((now - createdTime) > sixtyDays) {
-                            // Hapus sesi jika > 60 hari
                             localStorage.removeItem('utbk_student_token');
                             localStorage.removeItem(`answers_${savedToken}`);
                         } else {
-                            // Masih dalam 60 hari -> Tampilkan Hasil
                             setStudentName(data.studentName);
                             setCurrentTokenCode(savedToken);
                             setAnswers(data.answers || {});
@@ -97,12 +115,8 @@ const UTBKStudentApp = () => {
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
                         }
-                    } 
-                    // B. JIKA BELUM SELESAI (ACTIVE)
-                    else {
-                        // Cek apakah token > 24 Jam?
+                    } else {
                         if ((now - createdTime) < oneDay) {
-                            // Masih < 24 jam -> Restore Ujian
                             setStudentName(data.studentName);
                             setCurrentTokenCode(savedToken);
                             const savedAnswers = localStorage.getItem(`answers_${savedToken}`);
@@ -110,7 +124,6 @@ const UTBKStudentApp = () => {
                                 setAnswers(JSON.parse(savedAnswers));
                             }
                         } else {
-                            // Sudah > 24 jam dan belum selesai -> Hapus sesi (Expired)
                             localStorage.removeItem('utbk_student_token');
                             localStorage.removeItem(`answers_${savedToken}`);
                         }
@@ -222,7 +235,92 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  // --- FINISH EXAM ---
+  // --- IRT CALCULATION LOGIC (UPDATED) ---
+  const calculateScore = () => { 
+    const details = {}; 
+    const correctCounts = {};
+    let totalIrtScore = 0;
+    
+    // Urutan mapel sesuai kolom tabel
+    const mapelOrder = ['pu', 'ppu', 'pk', 'pbm', 'lbi', 'lbe', 'pm']; 
+
+    mapelOrder.forEach(id => {
+        const s = SUBTESTS.find(item => item.id === id);
+        if(!s) return;
+
+        let rawScore = 0; 
+        let maxRaw = 0;
+        let correctCount = 0; 
+        const questions = questionOrder[s.id] || [];
+
+        questions.forEach((q, i) => { 
+            const k = `${s.id}_${i}`; 
+            const ans = answers[k];
+            
+            // Logika IRT: Bobot Kesulitan
+            const difficulty = getQuestionDifficulty(q, i);
+            const weight = getWeight(difficulty);
+            
+            // Multiplier Tipe Soal
+            let typeMultiplier = 1;
+            if (q.type === 'isian') typeMultiplier = 1.5;
+            if (q.type === 'pilihan_majemuk') typeMultiplier = 1.2;
+            
+            const itemValue = weight * typeMultiplier;
+            maxRaw += itemValue;
+
+            // Cek Jawaban
+            let isCorrect = false;
+            if (ans) {
+                if (q.type === 'pilihan_majemuk') {
+                    if (Array.isArray(ans) && Array.isArray(q.correct)) {
+                        const sortedAns = [...ans].sort().join(',');
+                        const sortedKey = [...q.correct].sort().join(',');
+                        isCorrect = (sortedAns === sortedKey);
+                    }
+                } else if (q.type === 'isian') {
+                    if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
+                } else { isCorrect = (ans === q.correct); }
+            }
+
+            if (isCorrect) {
+                correctCount++;
+                rawScore += itemValue;
+            }
+        }); 
+
+        // Skala 200 - 1000
+        const ratio = maxRaw > 0 ? (rawScore / maxRaw) : 0;
+        const irtScore = Math.round(200 + (ratio * 800)); 
+        
+        totalIrtScore += irtScore;
+        correctCounts[id] = correctCount;
+
+        // Simpan Detail
+        details[id] = {
+            b: correctCount,
+            skor: irtScore
+        };
+    }); 
+
+    // Rata-rata Total
+    const finalAverageScore = Math.round(totalIrtScore / mapelOrder.length);
+
+    // Kita return juga "scores" dengan format ID mapel agar AnalysisDashboard lama tetap jalan
+    const scoresForDashboard = {};
+    mapelOrder.forEach(id => {
+        scoresForDashboard[id] = details[id].skor;
+    });
+
+    return { 
+        totalScore: finalAverageScore, 
+        details: details,
+        scores: scoresForDashboard, // Support untuk dashboard lama
+        correctCounts: correctCounts
+    }; 
+  };
+
+  // --- FINISH EXAM & LEADERBOARD FETCH ---
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
@@ -241,7 +339,7 @@ const UTBKStudentApp = () => {
                 await updateDoc(tokenRef, { 
                     status: 'used',
                     score: totalScore,
-                    scoreDetails: details,
+                    scoreDetails: details, // Simpan detail ke DB
                     finalTimeLeft: globalTimeLeftSeconds,
                     finishedAt: new Date().toISOString(),
                     violation: violationReason || null,
@@ -258,12 +356,14 @@ const UTBKStudentApp = () => {
 
                 querySnapshot.forEach((doc) => {
                     const data = doc.data();
-                    top10.push({ rank, 
+                    top10.push({ 
+                        rank, 
                         name: data.studentName, 
                         school: data.studentSchool || '-', 
                         score: data.score, 
-                        details: data.scoreDetails || {},
-                        timeLeft: data.finalTimeLeft });
+                        details: data.scoreDetails || {}, // Ambil detail dari DB
+                        timeLeft: data.finalTimeLeft 
+                    });
                     if (data.tokenCode === currentTokenCode) userRank = rank;
                     rank++;
                 });
@@ -282,7 +382,14 @@ const UTBKStudentApp = () => {
                  let rank = 1; let userRank = null;
                  snap.forEach(d => {
                      const dt = d.data();
-                     top10.push({ rank, name: dt.studentName, school: dt.studentSchool||'-', score: dt.score, timeLeft: dt.finalTimeLeft });
+                     top10.push({ 
+                         rank, 
+                         name: dt.studentName, 
+                         school: dt.studentSchool||'-', 
+                         score: dt.score, 
+                         details: dt.scoreDetails || {}, // Ambil detail
+                         timeLeft: dt.finalTimeLeft 
+                     });
                      if (dt.tokenCode === currentTokenCode) userRank = rank;
                      rank++;
                  });
@@ -292,9 +399,9 @@ const UTBKStudentApp = () => {
              loadLeaderboardOnly();
         }
     }
-  }, [screen]); 
+  }, [screen]);
 
-  // --- 2. TOKEN LOGIN (LOGIKA PINTAR: Prioritas Status Used) ---
+  // --- 2. TOKEN LOGIN ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -310,14 +417,12 @@ const UTBKStudentApp = () => {
       const oneDay = 24 * 60 * 60 * 1000;
       const sixtyDays = 60 * 24 * 60 * 60 * 1000;
 
-      // KONDISI 1: SUDAH SELESAI (Status 'used')
-      // Logika: Tetap boleh masuk asalkan < 60 Hari dari pembuatan token
+      // Logic: Status Used masih bisa dilihat sampai 60 hari
       if (data.status === 'used') {
           if ((now - createdTime) > sixtyDays) {
               alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
               return;
           }
-          
           alert(`Halo ${data.studentName}, menampilkan kembali hasil ujian Anda.`);
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
@@ -329,13 +434,12 @@ const UTBKStudentApp = () => {
           return;
       }
 
-      // KONDISI 2: BELUM SELESAI TAPI KADALUARSA (Status 'active' tapi > 24 Jam)
+      // Logic: Token Active cuma berlaku 24 jam
       if ((now - createdTime) > oneDay) { 
           alert('Token SUDAH KADALUARSA (Expired > 24 Jam). Anda tidak bisa memulai ujian.'); 
           return; 
       }
 
-      // KONDISI 3: VALID & BELUM SELESAI -> MULAI UJIAN
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
         localStorage.setItem('utbk_student_token', tokenCode);
@@ -439,81 +543,6 @@ const UTBKStudentApp = () => {
           return newAnswers;
       });
   };
-
-  // Ganti fungsi calculateScore yang lama dengan ini
-const calculateScore = () => { 
-    const details = {}; // Ini untuk menyimpan data detail per mapel
-    let totalIrtScore = 0;
-    
-    // Urutan mapel sesuai kolom di gambar
-    // Pastikan ID ini sesuai dengan SUBTESTS yang ada di config
-    const mapelOrder = ['pu', 'ppu', 'pk', 'pbm', 'lbi', 'lbe', 'pm']; 
-
-    mapelOrder.forEach(id => {
-        // Cari config subtestnya
-        const s = SUBTESTS.find(item => item.id === id);
-        if(!s) return;
-
-        let rawScore = 0; 
-        let maxRaw = 0;
-        let correctCount = 0; 
-        const questions = questionOrder[s.id] || [];
-
-        questions.forEach((q, i) => { 
-            const k = `${s.id}_${i}`; 
-            const ans = answers[k];
-            
-            // Logika IRT Sederhana (Bobot Kesulitan)
-            const difficulty = getQuestionDifficulty(q, i); // Pakai helper yg sebelumnya dibuat
-            const weight = getWeight(difficulty);
-            
-            let typeMultiplier = 1;
-            if (q.type === 'isian') typeMultiplier = 1.5;
-            
-            const itemValue = weight * typeMultiplier;
-            maxRaw += itemValue;
-
-            // Cek Jawaban
-            let isCorrect = false;
-            if (ans) {
-                if (q.type === 'pilihan_majemuk') {
-                    if (Array.isArray(ans) && Array.isArray(q.correct)) {
-                        const sortedAns = [...ans].sort().join(',');
-                        const sortedKey = [...q.correct].sort().join(',');
-                        isCorrect = (sortedAns === sortedKey);
-                    }
-                } else if (q.type === 'isian') {
-                    if (ans.toString().toLowerCase().trim() === q.correct.toString().toLowerCase().trim()) isCorrect = true;
-                } else { isCorrect = (ans === q.correct); }
-            }
-
-            if (isCorrect) {
-                correctCount++;
-                rawScore += itemValue;
-            }
-        }); 
-
-        // Hitung Skor Skala 1000 per Mapel
-        const ratio = maxRaw > 0 ? (rawScore / maxRaw) : 0;
-        const irtScore = Math.round(200 + (ratio * 800)); // Range 200 - 1000
-        
-        totalIrtScore += irtScore;
-
-        // SIMPAN DETAIL KE OBJECT
-        details[id] = {
-            b: correctCount, // Jumlah Benar
-            skor: irtScore   // Skor IRT
-        };
-    }); 
-
-    // Rata-rata Total
-    const finalAverageScore = Math.round(totalIrtScore / mapelOrder.length);
-
-    return { 
-        totalScore: finalAverageScore, 
-        details: details // Data lengkap untuk tabel
-    }; 
-};
   
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
@@ -524,40 +553,46 @@ const calculateScore = () => {
 
   const FooterLiezira = () => (<div className="mt-8 py-4 border-t border-gray-200 w-full text-center"><p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span></p></div>);
 
-  // --- ANALYSIS DASHBOARD ---
+  // --- ANALYSIS DASHBOARD (Updated Thresholds for 1000 scale) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
-      const tpsTotal = SUBTEST_GROUPS.TPS.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
-      const litTotal = SUBTEST_GROUPS.LITERASI.ids.reduce((acc, id) => acc + (scores[id] || 0), 0);
+      const tpsIds = SUBTEST_GROUPS.TPS.ids;
+      const litIds = SUBTEST_GROUPS.LITERASI.ids;
+
+      const tpsTotal = tpsIds.reduce((acc, id) => acc + (scores[id] || 0), 0);
+      const litTotal = litIds.reduce((acc, id) => acc + (scores[id] || 0), 0);
       
-      const grandTotal = Math.abs(tpsTotal) + Math.abs(litTotal) || 1; 
-      const tpsPercent = Math.round((Math.max(0, tpsTotal) / grandTotal) * 100);
+      const tpsAvg = Math.round(tpsTotal / tpsIds.length);
+      const litAvg = Math.round(litTotal / litIds.length);
+
+      const grandTotal = tpsAvg + litAvg || 1; 
+      const tpsPercent = Math.round((tpsAvg / grandTotal) * 100);
       const litPercent = 100 - tpsPercent;
 
-      const isWeakTPS = tpsTotal < litTotal;
+      const isWeakTPS = tpsAvg < litAvg;
       const mitigationText = isWeakTPS 
-          ? "Skor TPS kamu tertinggal. Ini menandakan perlunya penguatan di logika dasar, pola bilangan, dan pemahaman frasa. Fokuskan latihan pada soal-soal penalaran analitik."
-          : "Logika kamu kuat, namun aspek Literasi perlu didongkrak. Tingkatkan kecepatan membaca (skimming) dan perbanyak latihan soal bacaan panjang bahasa Indonesia & Inggris.";
+          ? "Rata-rata TPS kamu lebih rendah. Fokus perbaiki logika dasar, kuantitatif, dan penalaran umum."
+          : "Kemampuan logikamu kuat, tapi Literasi perlu ditingkatkan. Perbanyak latihan membaca cepat (skimming).";
 
       let motivation = "Terus berjuang!";
       let badgeColor = "bg-gray-500";
       let prediction = "Perlu Peningkatan";
 
-      if (totalScore > 400) {
-          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk persaingan di level tertinggi.";
+      if (totalScore >= 700) {
+          motivation = "LUAR BIASA! Skor ini sangat kompetitif untuk PTN Favorit.";
           badgeColor = "bg-emerald-500";
           prediction = "Sangat Kompetitif";
-      } else if (totalScore > 250) {
-          motivation = "KERJA BAGUS! Kamu sudah di atas rata-rata. Sedikit lagi menuju Top Tier.";
+      } else if (totalScore >= 600) {
+          motivation = "KERJA BAGUS! Kamu di atas rata-rata nasional.";
           badgeColor = "bg-blue-500";
           prediction = "Kompetitif";
-      } else if (totalScore > 200) {
-          motivation = "PROGRES BAIK. Fokus tingkatkan di subtes terlemahmu untuk hasil maksimal.";
+      } else if (totalScore >= 500) {
+          motivation = "RATA-RATA. Nilai aman untuk PTN menengah.";
           badgeColor = "bg-yellow-500";
           prediction = "Cukup Baik";
       } else {
-          motivation = "JANGAN MENYERAH! Analisis kelemahan di bawah dan lipatgandakan latihan.";
+          motivation = "JANGAN MENYERAH! Skor masih di bawah 500. Evaluasi strategi.";
           badgeColor = "bg-orange-500";
           prediction = "Butuh Latihan Ekstra";
       }
@@ -573,7 +608,7 @@ const calculateScore = () => {
       let tempoDesc = "Ritme pengerjaanmu sudah pas dengan standar UTBK.";
       
       if (remainingSeconds > 3600) { 
-          if (totalScore < 300) {
+          if (totalScore < 500) {
               tempoStatus = "Terlalu Cepat";
               tempoDesc = "Sisa waktu banyak tapi skor rendah. Kurang teliti.";
           } else {
@@ -609,12 +644,12 @@ const calculateScore = () => {
                       <div className="relative group">
                           <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-20 rounded-full group-hover:opacity-30 transition duration-1000"></div>
                           <div className="bg-white/5 p-6 md:p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[200px] md:min-w-[240px] relative z-10">
-                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Total Skor Akhir</span>
+                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Skor Rata-Rata</span>
                               <div className="text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-2xl">
                                   {totalScore}
                               </div>
                               <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">
-                                  Analisis AI Terverifikasi
+                                  Simulasi IRT
                               </div>
                           </div>
                       </div>
@@ -624,7 +659,7 @@ const calculateScore = () => {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
                       <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Kemampuan</h4>
+                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Rata-Rata</h4>
                       </div>
                       
                       <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
@@ -642,12 +677,12 @@ const calculateScore = () => {
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS (Logika)</span> <span>{tpsPercent}%</span></div>
                                   <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-600 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-blue-600 mt-1">{tpsTotal} Poin</div>
+                                  <div className="text-right text-xs font-mono font-bold text-blue-600 mt-1">Avg: {tpsAvg}</div>
                               </div>
                               <div>
                                   <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi (Bahasa)</span> <span>{litPercent}%</span></div>
                                   <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-orange-500 rounded-full"></div></div>
-                                  <div className="text-right text-xs font-mono font-bold text-orange-600 mt-1">{litTotal} Poin</div>
+                                  <div className="text-right text-xs font-mono font-bold text-orange-600 mt-1">Avg: {litAvg}</div>
                               </div>
                           </div>
                       </div>
@@ -727,12 +762,12 @@ const calculateScore = () => {
                                       <div className="flex items-center gap-6 w-full md:w-auto">
                                           <div className="flex-1 md:w-48">
                                               <div className="flex justify-between text-xs mb-1.5 font-bold text-slate-400">
-                                                  <span>Progress Nilai</span>
+                                                  <span>Progress Skor (Max 1000)</span>
                                               </div>
                                               <div className="w-full bg-slate-100 rounded-full h-2">
                                                   <div 
                                                       className={`h-full rounded-full transition-all duration-1000 ${colorClass}`} 
-                                                      style={{ width: `${Math.min(100, Math.abs(score/3))}%` }}
+                                                      style={{ width: `${Math.min(100, Math.abs(score/10))}%` }}
                                                   ></div>
                                               </div>
                                           </div>
@@ -813,13 +848,11 @@ const calculateScore = () => {
             <input type="text" value={inputToken} onChange={e => setInputToken(e.target.value.toUpperCase())} className="w-full px-4 py-3 border-2 border-indigo-200 rounded-lg text-xl font-mono text-center tracking-widest uppercase outline-none focus:ring-4 focus:ring-indigo-100 bg-white" placeholder="UTBK-XXXXXX" />
           </div>
           <div className="bg-white border border-gray-200 rounded-lg p-4 mb-6 text-left shadow-sm">
-            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian:</h3>
+            <h3 className="font-bold text-gray-800 text-sm mb-3 flex items-center gap-2"><AlertCircle size={16} className="text-indigo-600"/> Poin Penilaian (Metode IRT):</h3>
             <ul className="space-y-2 text-sm text-gray-600">
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Isian Benar</span><span className="font-bold text-green-700">+6</span></li>
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Pilihan Majemuk</span><span className="font-bold text-green-700">+5</span></li>
-              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Pilihan Ganda</span><span className="font-bold text-green-700">+3</span></li>
-              <li className="flex justify-between bg-red-50 px-2 py-1 rounded border border-red-100"><span className="flex gap-2 items-center"><XCircle size={16} className="text-red-500"/>Salah</span><span className="font-bold text-red-700">0</span></li>
-              <li className="flex justify-between bg-orange-50 px-2 py-1 rounded border border-orange-100"><span className="flex gap-2 items-center"><AlertCircle size={16} className="text-orange-500"/>Kosong</span><span className="font-bold text-orange-700">-1</span></li>
+              <li className="flex justify-between bg-green-50 px-2 py-1 rounded border border-green-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-green-600"/>Bobot Soal</span><span className="font-bold text-green-700">Dinamis</span></li>
+              <li className="flex justify-between bg-blue-50 px-2 py-1 rounded border border-blue-100"><span className="flex gap-2 items-center"><CheckCircle size={16} className="text-blue-600"/>Skala Nilai</span><span className="font-bold text-blue-700">200 - 1000</span></li>
+              <li className="text-xs text-gray-400 mt-2 italic">*Nilai ditentukan berdasarkan tingkat kesulitan soal dan tipe soal.</li>
             </ul>
           </div>
           <button onClick={handleTokenLogin} className="w-full bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-base hover:bg-indigo-700 transition shadow-lg transform hover:-translate-y-1">Mulai Ujian Sekarang</button>
@@ -843,7 +876,9 @@ const calculateScore = () => {
       </div>
     );
   }
-if (screen === 'result') {
+
+  // --- RESULT SCREEN (UPDATED UI) ---
+  if (screen === 'result') {
     return (
       <div className="min-h-screen bg-gray-50 p-4 md:p-8 flex justify-center items-center select-none overflow-y-auto">
         <div className="bg-white p-4 md:p-8 rounded-xl shadow-2xl max-w-[95%] w-full text-center my-8">
@@ -900,7 +935,6 @@ if (screen === 'result') {
                   {leaderboard.length === 0 ? (
                     <tr><td colSpan="18" className="p-6 text-center text-gray-500 italic">Memuat data peringkat...</td></tr>
                   ) : leaderboard.map((row, idx) => {
-                    // Helper aman ambil data (antisipasi undefined)
                     const getVal = (id, type) => row.details?.[id]?.[type] || 0;
                     const isMe = row.name === studentName;
                     
