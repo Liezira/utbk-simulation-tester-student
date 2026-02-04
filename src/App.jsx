@@ -806,12 +806,20 @@ const UTBKStudentApp = () => {
               <li>Jika melakukan pelanggaran lagi, ujian <b>OTOMATIS DIKUMPULKAN (DISKUALIFIKASI)</b>.</li>
             </ul>
           </div>
+          
           <button 
-            onClick={() => {
-              setIsPaused(false);
-              document.documentElement.requestFullscreen().catch(()=>{});
+            onClick={async () => {
+              try {
+                if (!document.fullscreenElement) {
+                   await document.documentElement.requestFullscreen();
+                }
+              } catch (err) {
+                console.error("Gagal fullscreen otomatis:", err);
+              }
+              
+              setTimeout(() => setIsPaused(false), 100);
             }} 
-            className="w-full py-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition shadow-lg"
+            className="w-full py-4 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition shadow-lg active:scale-95"
           >
             SAYA MENGERTI & LANJUTKAN
           </button>
