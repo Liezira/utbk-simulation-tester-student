@@ -707,26 +707,44 @@ const UTBKStudentApp = () => {
   }, [screen]);
 
   // --- TOKEN LOGIN ---
+  // --- TOKEN LOGIN (DEBUG VERSION) ---
   const handleTokenLogin = async () => {
+    console.log("1. Memulai login...");
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
-    const tokenCode = inputToken.trim().toUpperCase();
+    
+    // Pastikan input bersih dari spasi
+    const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
+    console.log("2. Kode Token diproses:", tokenCode);
+
     const docRef = doc(db, 'tokens', tokenCode);
     
     try {
+      console.log("3. Menghubungi Database...");
       const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) { alert('Token TIDAK DITEMUKAN.'); return; }
+      console.log("4. Respon Database diterima.");
+      
+      if (!docSnap.exists()) { 
+        console.error("TOKEN TIDAK DITEMUKAN DI DB");
+        alert('Token TIDAK DITEMUKAN. Cek Database!'); 
+        return; 
+      }
       
       const data = docSnap.data();
+      console.log("5. Data Token:", data);
+
       const createdTime = new Date(data.createdAt).getTime();
       const now = Date.now();
       const oneDay = 24 * 60 * 60 * 1000;
       const sixtyDays = 60 * 24 * 60 * 60 * 1000;
 
+      // Cek Status USED
       if (data.status === 'used') {
+          console.log("Status: USED");
           if ((now - createdTime) > sixtyDays) {
-              alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
+              alert(`Token kadaluarsa (sudah > 60 hari).`);
               return;
           }
+          // Login Ulang (Resume)
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
@@ -737,144 +755,46 @@ const UTBKStudentApp = () => {
           return;
       }
 
+      // Cek Expired 24 Jam
       if ((now - createdTime) > oneDay) { 
-          alert('Token SUDAH KADALUARSA (Expired > 24 Jam). Anda tidak bisa memulai ujian.'); 
+          alert('Token SUDAH KADALUARSA (Expired > 24 Jam).'); 
           return; 
       }
 
-      if (confirm(`Login sebagai ${data.studentName}?\n\n⚠️ PERINGATAN:\n- Ujian menggunakan sistem anti-cheat KETAT\n- Screenshot, split screen, pindah tab akan terdeteksi\n- Maksimal ${SECURITY_CONFIG.MAX_VIOLATIONS} pelanggaran sebelum auto-submit\n\nLanjutkan?`)) {
-        // PENTING: Fullscreen HARUS dipanggil PERTAMA sebelum async operation
+      console.log("6. Token Valid. Meminta konfirmasi user...");
+      if (confirm(`Login sebagai ${data.studentName}?\n\nKlik OK untuk memulai.`)) {
+        console.log("7. User klik OK. Memulai setup...");
+        
+        // Coba Fullscreen
         await forceFullscreen();
         
-        // Baru update database
-        await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
+        // Update DB
+        console.log("8. Mengupdate Login Time ke DB...");
+        try {
+            await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
+            console.log("9. Update Berhasil!");
+        } catch (err) {
+            console.error("GAGAL UPDATE DOC:", err);
+            alert("Gagal update database. Cek Rules/Permission!");
+            return;
+        }
+
+        // Simpan Local Storage
         localStorage.setItem('utbk_student_token', tokenCode);
         setStudentName(data.studentName);
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
         setCountdownTime(5); 
+        
+        console.log("10. Pindah ke layar Countdown");
         setScreen('countdown'); 
+      } else {
+          console.log("User membatalkan login.");
       }
     } catch (error) { 
-      console.error(error); 
-      alert('Koneksi Error.'); 
+      console.error("ERROR FATAL:", error); 
+      alert(`Error Detail: ${error.message}`); 
     }
-  };
-
-  const startTest = (bypass = false) => {
-    if (!bypass) return;
-    if (!globalStartTime) setGlobalStartTime(Date.now()); 
-
-    for (const s of SUBTESTS) { 
-      if ((bankSoal[s.id]?.length || 0) < s.questions) { 
-        alert(`Soal ${s.name} belum siap.`); 
-        return; 
-      } 
-    }
-    
-    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
-    setTestOrder(shuffledSubtests);
-    
-    const qOrder = {};
-    shuffledSubtests.forEach((subtest) => {
-      const bank = [...(bankSoal[subtest.id] || [])];
-      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
-    });
-    setQuestionOrder(qOrder);
-    
-    setCurrentSubtestIndex(0); 
-    setCurrentQuestion(0); 
-    
-    const saved = localStorage.getItem(`answers_${currentTokenCode}`);
-    if(saved) setAnswers(JSON.parse(saved));
-    else setAnswers({}); 
-
-    setDoubtful({}); 
-    
-    const durationSec = shuffledSubtests[0].time * 60;
-    const targetTime = Date.now() + (durationSec * 1000);
-    setEndTime(targetTime);
-    setTimeLeft(durationSec);
-    
-    // AKTIFKAN SECURITY MONITOR
-    setSecurityActive(true);
-    
-    setScreen('test');
-  };
-
-  // --- TIMING LOGIC ---
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (screen === 'test' && endTime) {
-        timerRef.current = setInterval(() => {
-            const now = Date.now();
-            const delta = Math.floor((endTime - now) / 1000); 
-            if (delta <= 0) {
-                clearInterval(timerRef.current);
-                setTimeLeft(0);
-                if (currentSubtestIndex < testOrder.length - 1) { 
-                  setSecurityActive(false);
-                  setScreen('break'); 
-                  setBreakTime(10); 
-                } 
-                else { 
-                  setSecurityActive(false);
-                  setScreen('result'); 
-                }
-            } else { setTimeLeft(delta); }
-        }, 1000);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [screen, endTime, currentSubtestIndex, testOrder]);
-
-  useEffect(() => { 
-      if (screen === 'countdown' && countdownTime > 0) { 
-        const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
-        return () => clearTimeout(t); 
-      } 
-      else if (screen === 'countdown' && countdownTime === 0) { 
-        startTest(true); 
-      } 
-  }, [countdownTime, screen]);
-
-  useEffect(() => { 
-      if (screen === 'break' && breakTime > 0) { 
-        const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
-        return () => clearTimeout(t); 
-      } 
-      else if (screen === 'break' && breakTime === 0) { 
-          const n = currentSubtestIndex + 1; 
-          setCurrentSubtestIndex(n); 
-          setCurrentQuestion(0); 
-          const durationSec = testOrder[n].time * 60; 
-          setEndTime(Date.now() + (durationSec * 1000));
-          setTimeLeft(durationSec);
-          setSecurityActive(true);
-          setScreen('test'); 
-      } 
-  }, [breakTime, screen]);
-
-  useEffect(() => { 
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-  }, [currentQuestion, currentSubtestIndex, screen]);
-  
-  const handleAnswer = (val, type) => { 
-      const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
-      
-      setAnswers(prev => {
-          let newAnswers = { ...prev };
-          if (type === 'pilihan_majemuk') {
-              let current = newAnswers[k] || [];
-              if (current.includes(val)) current = current.filter(x => x !== val);
-              else current.push(val);
-              newAnswers[k] = current;
-          } else {
-              newAnswers[k] = val; 
-          }
-          
-          localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
-          return newAnswers;
-      });
   };
   
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
