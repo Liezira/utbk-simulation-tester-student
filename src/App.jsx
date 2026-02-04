@@ -210,30 +210,152 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('contextmenu', handleContextMenu);
   }, [isActive]);
 
-  // 9. BLOKIR KEYBOARD SHORTCUTS BERBAHAYA
+  // 9. BLOKIR KEYBOARD SHORTCUTS BERBAHAYA (ULTRA-STRICT)
   useEffect(() => {
     if (!isActive) return;
 
+    let metaPressed = false;
+    let ctrlPressed = false;
+    let altPressed = false;
+    let shiftPressed = false;
+    
+    const nukeClipboard = () => { 
+      try { 
+        if (navigator.clipboard) navigator.clipboard.writeText("⚠️ CHEAT ATTEMPT DETECTED ⚠️");
+      } catch (e) {} 
+    };
+
     const handleKeyDown = (e) => {
-      // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+Shift+C
-      if (
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.key === 'j')) ||
-        (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) ||
-        (e.ctrlKey && (e.key === 'U' || e.key === 'u')) ||
-        (e.ctrlKey && (e.key === 'S' || e.key === 's')) || // Save
-        e.key === 'PrintScreen' ||
-        (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4')) // Mac screenshot
-      ) {
-        e.preventDefault();
-        handleViolation('devtools', '🚫 Shortcut keyboard terdeteksi dan diblokir!');
+      if (e.key === 'Control') ctrlPressed = true;
+      if (e.key === 'Alt') altPressed = true;
+      if (e.key === 'Shift') shiftPressed = true;
+      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) metaPressed = true;
+
+      if (e.key === 'PrintScreen' || e.keyCode === 44) {
+        e.preventDefault(); e.stopPropagation(); nukeClipboard();
+        handleViolation('screenshot', '🚫 Screenshot dilarang!');
+        return false;
+      }
+
+      if (metaPressed && (e.key === 'PrintScreen' || e.keyCode === 44)) {
+        e.preventDefault(); e.stopPropagation(); nukeClipboard();
+        handleViolation('screenshot', '🚫 Screenshot dilarang! (Win+PrtSc)');
+        return false;
+      }
+
+      if (metaPressed && shiftPressed && (e.key === 'S' || e.key === 's')) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('screenshot', '🚫 Snipping Tool dilarang! (Win+Shift+S)');
+        return false;
+      }
+
+      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('systemKey', '🚫 Tombol Windows/System dilarang!');
+        return false;
+      }
+
+      if (altPressed && (e.key === 'PrintScreen' || e.keyCode === 44)) {
+        e.preventDefault(); e.stopPropagation(); nukeClipboard();
+        handleViolation('screenshot', '🚫 Screenshot dilarang! (Alt+PrtSc)');
+        return false;
+      }
+
+      if (ctrlPressed && (e.key === 'PrintScreen' || e.keyCode === 44)) {
+        e.preventDefault(); e.stopPropagation(); nukeClipboard();
+        handleViolation('screenshot', '🚫 Screenshot dilarang! (Ctrl+PrtSc)');
+        return false;
+      }
+
+      if (e.key === 'F12') {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('devtools', '🚫 F12 diblokir!');
+        return false;
+      }
+
+      if (ctrlPressed && shiftPressed && ['I','J','C'].includes(e.key.toUpperCase())) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('devtools', '🚫 DevTools shortcut diblokir!');
+        return false;
+      }
+
+      if (ctrlPressed && ['U','S','P'].includes(e.key.toUpperCase())) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('devtools', '🚫 Shortcut terlarang!');
+        return false;
+      }
+
+      if (altPressed && e.key === 'Tab') {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('systemKey', '🚫 Alt+Tab dilarang!');
+        return false;
+      }
+
+      if (e.key === 'F11') {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('fullscreen', '🚫 F11 diblokir!');
+        return false;
+      }
+
+      if (e.key === 'Escape' && document.fullscreenElement) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('fullscreen', '🚫 Dilarang keluar fullscreen!');
+        return false;
+      }
+
+      if (metaPressed && (e.key === 'L' || e.key === 'l')) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('systemKey', '🚫 Lock screen dilarang!');
+        return false;
+      }
+
+      if (ctrlPressed && shiftPressed && e.key === 'Escape') {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('systemKey', '🚫 Task Manager dilarang!');
+        return false;
+      }
+
+      if (ctrlPressed && altPressed && (e.key === 'Delete' || e.keyCode === 46)) {
+        e.preventDefault(); e.stopPropagation();
+        handleViolation('systemKey', '🚫 Ctrl+Alt+Del dilarang!');
+        return false;
+      }
+
+      if (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4')) {
+        e.preventDefault(); e.stopPropagation(); nukeClipboard();
+        handleViolation('screenshot', '🚫 Mac screenshot dilarang!');
         return false;
       }
     };
+    
+    const handleKeyUp = (e) => { 
+      if (e.key === 'Control') ctrlPressed = false;
+      if (e.key === 'Alt') altPressed = false;
+      if (e.key === 'Shift') shiftPressed = false;
+      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) metaPressed = false;
+      if (e.key === 'PrintScreen' || e.keyCode === 44) nukeClipboard();
+    };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleClipboardChange = () => {
+      if (navigator.clipboard) {
+        navigator.clipboard.readText().then(text => {
+          if (text && text.length > 0 && !text.includes('CHEAT ATTEMPT')) {
+            handleViolation('screenshot', '⚠️ Clipboard activity terdeteksi!');
+            nukeClipboard();
+          }
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('keyup', handleKeyUp, true);
+    const clipboardMonitor = setInterval(handleClipboardChange, 1000);
+
+    return () => { 
+      window.removeEventListener('keydown', handleKeyDown, true); 
+      window.removeEventListener('keyup', handleKeyUp, true);
+      clearInterval(clipboardMonitor);
+    };
   }, [isActive]);
 
   // 10. DETEKSI MOUSE LEAVE (untuk mobile floating window)
@@ -246,6 +368,63 @@ const AdvancedSecurityMonitor = ({
 
     document.addEventListener('mouseleave', handleMouseLeave);
     return () => document.removeEventListener('mouseleave', handleMouseLeave);
+  }, [isActive]);
+
+  // 11. CSS INJECTION (ANTI-SCREENSHOT & ANTI-SELECT)
+  useEffect(() => {
+    if (!isActive) return;
+
+    const style = document.createElement('style');
+    style.innerHTML = `
+      body, * {
+        -webkit-user-select: none !important;
+        -moz-user-select: none !important;
+        -ms-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      img, video, canvas {
+        -webkit-user-drag: none !important;
+        -khtml-user-drag: none !important;
+        -moz-user-drag: none !important;
+        -o-user-drag: none !important;
+        user-drag: none !important;
+        pointer-events: none !important;
+      }
+      @media print {
+        html, body { display: none !important; visibility: hidden !important; }
+      }
+      ::-webkit-scrollbar { display: none; }
+      * { scrollbar-width: none; -ms-overflow-style: none; }
+    `;
+    
+    document.head.appendChild(style);
+    return () => {
+      if (style.parentNode) document.head.removeChild(style);
+    };
+  }, [isActive]);
+
+  // 12. MOBILE SCREENSHOT DETECTION (ADVANCED)
+  useEffect(() => {
+    if (!isActive) return;
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (!isMobile) return;
+
+    const handleVisibilityForScreenshot = () => {
+      if (document.hidden) {
+        const hiddenTime = Date.now();
+        setTimeout(() => {
+          const visibleTime = Date.now();
+          const timeDiff = visibleTime - hiddenTime;
+          if (timeDiff < 200) {
+            handleViolation('screenshot', '⚠️ Kemungkinan screenshot terdeteksi (Mobile)');
+          }
+        }, 100);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityForScreenshot);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityForScreenshot);
   }, [isActive]);
 
   // HANDLER VIOLATION
@@ -292,6 +471,7 @@ const AdvancedSecurityMonitor = ({
 // --- WATERMARK COMPONENT ---
 const SecurityWatermark = ({ studentName, tokenCode }) => {
   const watermarkText = `${studentName} • ${tokenCode} • ${new Date().toLocaleString('id-ID')}`;
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   
   return (
     <div style={{
@@ -302,22 +482,22 @@ const SecurityWatermark = ({ studentName, tokenCode }) => {
       height: '100vh',
       pointerEvents: 'none',
       zIndex: 9998,
-      opacity: 0.08,
+      opacity: isMobile ? 0.05 : 0.08,
       display: 'flex',
       flexWrap: 'wrap',
       justifyContent: 'space-around',
       alignItems: 'center',
       overflow: 'hidden',
     }}>
-      {Array(30).fill(watermarkText).map((text, i) => (
+      {Array(isMobile ? 15 : 30).fill(watermarkText).map((text, i) => (
         <span
           key={i}
           style={{
             transform: 'rotate(-45deg)',
-            fontSize: '16px',
+            fontSize: isMobile ? '10px' : '16px',
             fontWeight: 'bold',
             color: '#000',
-            margin: '40px',
+            margin: isMobile ? '30px' : '40px',
             whiteSpace: 'nowrap',
           }}
         >
@@ -359,11 +539,38 @@ const UTBKStudentApp = () => {
   const forceFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
-        await document.documentElement.requestFullscreen();
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+          await document.documentElement.requestFullscreen();
+          
+          if (window.screen.orientation && window.screen.orientation.lock) {
+            try {
+              const screenWidth = window.screen.width;
+              const screenHeight = window.screen.height;
+              
+              if (screenWidth >= 768 || screenHeight >= 768) {
+                await window.screen.orientation.lock('landscape');
+              } else {
+                await window.screen.orientation.lock('natural').catch(() => {});
+              }
+            } catch (orientError) {
+              console.log('Orientation lock not supported:', orientError);
+            }
+          }
+        } else {
+          await document.documentElement.requestFullscreen();
+        }
       }
     } catch (err) {
       console.error('Fullscreen failed:', err);
-      alert('⚠️ Gagal masuk fullscreen. Ujian memerlukan mode fullscreen!');
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      if (!isMobile) {
+        alert('⚠️ Gagal masuk fullscreen. Ujian memerlukan mode fullscreen!');
+      } else {
+        console.warn('Mobile fullscreen not fully supported, continuing...');
+      }
     }
   };
 
