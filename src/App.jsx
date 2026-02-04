@@ -6,11 +6,6 @@ import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
-import { GoogleReCaptchaProvider } from 'react-google-recaptcha-v3';
-
-<GoogleReCaptchaProvider reCaptchaKey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}>
-  <UTBKStudentApp />
-</GoogleReCaptchaProvider>
 
 // --- CONFIGURATION ---
 const SUBTEST_GROUPS = {
