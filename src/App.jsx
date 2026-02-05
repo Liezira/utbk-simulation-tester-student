@@ -1077,7 +1077,7 @@ const UTBKStudentApp = () => {
     <div 
       className="min-h-screen w-full bg-gray-50 select-none pb-10" 
       style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
-      onContextMenu={(e) => e.preventDefault()} // MATIKAN KLIK KANAN (HARD BLOCK)
+      onContextMenu={(e) => e.preventDefault()} // MATIKAN KLIK KANAN
     >
       
       {/* --- INTEGRASI SECURITY --- */}
@@ -1087,13 +1087,13 @@ const UTBKStudentApp = () => {
         onForceSubmit={forceSubmitExam} 
         onWarning={handleSecurityWarning} 
       />
-      
       {sp1Data && <SP1Modal data={sp1Data} onClose={closeSP1} />}
 
-      {/* HEADER BARU (TANPA BADGE PROTECTED) */}
+      {/* HEADER BARU (RESPONSIF & TANPA BADGE PROTECTED) */}
       <div className="sticky top-0 z-40 bg-indigo-700 text-white shadow-lg transition-all duration-300">
         <div className="max-w-6xl mx-auto p-4 flex flex-col md:flex-row justify-between items-center gap-4">
           
+          {/* Judul Subtes & Info Soal */}
           <div className="text-center md:text-left w-full md:w-auto">
             <h2 className="text-lg md:text-xl font-bold leading-tight">{currentSubtest.name}</h2>
             <p className="text-xs md:text-sm text-indigo-200 mt-1">
@@ -1101,7 +1101,7 @@ const UTBKStudentApp = () => {
             </p>
           </div>
 
-          {/* Timer Only - Centered/Bottom on Mobile, Right on Desktop */}
+          {/* Timer Saja (Protected Dihapus) */}
           <div className="flex items-center justify-center w-full md:w-auto">
             <div className="flex items-center gap-2 bg-indigo-900 px-6 py-2 rounded-lg border border-indigo-500/30 w-full md:w-auto justify-center shadow-inner">
               <Clock size={20} className="md:w-6 md:h-6 text-yellow-400" />
