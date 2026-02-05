@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin, AlertOctagon, AlertTriangle, Shield, Eye, Camera, Smartphone } from 'lucide-react';
+import { Clock, Ticket, ShieldAlert, Timer, Copyright, CheckSquare, AlignLeft, List, PieChart, Lightbulb, LayoutDashboard, Shield, Smartphone } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -9,16 +9,8 @@ import Latex from 'react-latex-next';
 
 // --- CONFIGURATION ---
 const SUBTEST_GROUPS = {
-  TPS: {
-    title: "Tes Potensi Skolastik (TPS)",
-    ids: ['pu', 'ppu', 'pbm', 'pk'],
-    color: "#3b82f6", 
-  },
-  LITERASI: {
-    title: "Tes Literasi & Penalaran",
-    ids: ['lbi', 'lbe', 'pm'],
-    color: "#f97316", 
-  }
+  TPS: { title: "Tes Potensi Skolastik (TPS)", ids: ['pu', 'ppu', 'pbm', 'pk'], color: "#3b82f6" },
+  LITERASI: { title: "Tes Literasi & Penalaran", ids: ['lbi', 'lbe', 'pm'], color: "#f97316" }
 };
 
 const SUBTESTS = [
@@ -31,204 +23,130 @@ const SUBTESTS = [
   { id: 'pm', name: 'Penalaran Matematika', questions: 20, time: 30 },
 ];
 
-// --- SECURITY CONFIGURATION ---
 const SECURITY_CONFIG = {
-  MAX_VIOLATIONS: 2, // SP1 -> SP2 (Auto Submit)
+  MAX_VIOLATIONS: 2, 
   PASTE_BLOCKED: true, 
   COPY_BLOCKED: true, 
   DEVTOOLS_BLOCKED: true, 
   RIGHT_CLICK_BLOCKED: true, 
 };
 
-// --- IRT HELPER FUNCTIONS ---
+// --- HELPER FUNCTIONS ---
 const getQuestionDifficulty = (question, index) => {
-    if (question.difficulty) {
-        if (question.difficulty === 'hard') return 3;
-        if (question.difficulty === 'medium') return 2;
-        return 1;
-    }
-    // Logic fallback
+    if (question.difficulty === 'hard') return 3;
+    if (question.difficulty === 'medium') return 2;
     if ((index + 1) % 3 === 0) return 3; 
     if ((index + 1) % 2 === 0) return 2; 
     return 1; 
 };
 
 const getWeight = (difficultyLevel) => {
-    switch (difficultyLevel) {
-        case 3: return 2.0; // Hard
-        case 2: return 1.5; // Medium
-        default: return 1.0; // Easy
-    }
+    switch (difficultyLevel) { case 3: return 2.0; case 2: return 1.5; default: return 1.0; }
 };
 
-// --- ADVANCED SECURITY MONITOR (SENSOR ONLY) ---
-// Komponen ini sekarang hanya bertugas mendeteksi dan melapor ke Parent.
-// State hitungan pelanggaran dipindah ke Parent agar tidak reset saat ganti layar.
-const AdvancedSecurityMonitor = ({ 
-  isActive, 
-  onViolationDetected // Callback ke parent
-}) => {
+// --- ADVANCED SECURITY MONITOR (ANTI-SPLIT SCREEN V2) ---
+const AdvancedSecurityMonitor = ({ isActive, onViolationDetected }) => {
   const lastActivityRef = useRef(Date.now());
-  const screenshotCheckRef = useRef(null);
-  const devtoolsCheckRef = useRef(null);
+  const checkIntervalRef = useRef(null);
 
-  // --- 1. CSS INJECTION (Mencegah Seleksi Teks) ---
   useEffect(() => {
     if (!isActive) return;
+
+    // 1. INJEKSI CSS ANTI-SELECT
     const style = document.createElement('style');
-    style.innerHTML = `
-      body {
-        -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;
-      }
-      @media print { html, body { display: none !important; } }
-    `;
+    style.innerHTML = `body { -webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none; } @media print { html, body { display: none !important; } }`;
     document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
-  }, [isActive]);
 
-  // --- 2. DETEKSI SCREENSHOT & LAYAR ---
-  useEffect(() => {
-    if (!isActive) return;
-    const detectScreenAnomalies = () => {
-      const currentTime = Date.now();
-      const timeSinceLastActivity = currentTime - lastActivityRef.current;
-      // Indikasi Screenshot: Layar freeze/blur sangat cepat (<100ms)
-      if (document.hidden && timeSinceLastActivity < 100) {
-        onViolationDetected('screenshot', '⚠️ Terdeteksi kedipan layar (Indikasi Screenshot)');
+    // 2. LOGIC DETEKSI SPLIT SCREEN & FLOATING WINDOW
+    const checkScreenIntegrity = () => {
+      const now = Date.now();
+      
+      // A. Deteksi Blur/Focus (Basic)
+      if (document.hidden) {
+        onViolationDetected('visibility', '⚠️ Terdeteksi pindah tab / minimize!');
       }
-    };
-    screenshotCheckRef.current = setInterval(detectScreenAnomalies, 1000);
-    return () => clearInterval(screenshotCheckRef.current);
-  }, [isActive, onViolationDetected]);
 
-  // --- 3. DETEKSI DEVTOOLS ---
-  useEffect(() => {
-    if (!isActive || !SECURITY_CONFIG.DEVTOOLS_BLOCKED) return;
-    const detectDevTools = () => {
-      const threshold = 160; 
-      const widthThreshold = window.outerWidth - window.innerWidth > threshold;
-      const heightThreshold = window.outerHeight - window.innerHeight > threshold;
-      if (widthThreshold || heightThreshold) {
-        onViolationDetected('devtools', '🚫 DevTools terdeteksi terbuka!');
+      // B. Deteksi Screenshot (Rapid Blur)
+      if (document.hidden && (now - lastActivityRef.current < 100)) {
+        onViolationDetected('screenshot', '⚠️ Terdeteksi kedipan layar (Screenshot)');
       }
-    };
-    devtoolsCheckRef.current = setInterval(detectDevTools, 1500);
-    return () => clearInterval(devtoolsCheckRef.current);
-  }, [isActive, onViolationDetected]);
 
-  // --- 4. EVENT LISTENER GLOBAL ---
-  useEffect(() => {
-    if (!isActive) return;
+      // C. DETEKSI SPLIT SCREEN (RASIO LAYAR) - CRITICAL FIX
+      const screenHeight = window.screen.availHeight || window.screen.height;
+      const windowHeight = window.innerHeight;
+      const screenWidth = window.screen.availWidth || window.screen.width;
+      const windowWidth = window.innerWidth;
 
-    const handleBlur = () => onViolationDetected('blur', '⚠️ Dilarang pindah aplikasi/split screen!');
-    const handleVisibilityChange = () => {
-      if (document.hidden) onViolationDetected('visibility', '⚠️ Terdeteksi pindah tab!');
+      // Cek apakah User sedang mengetik (Keyboard muncul bikin layar kecil, ini boleh)
+      const activeTag = document.activeElement?.tagName;
+      const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+
+      if (!isTyping) {
+        // Logic: Jika tinggi browser < 80% tinggi layar HP -> SPLIT SCREEN
+        if (windowHeight < screenHeight * 0.80) {
+           onViolationDetected('split_screen_h', '🚫 Split Screen Terdeteksi (Height)!');
+        }
+        // Logic: Jika lebar browser < 90% lebar layar HP (Portrait) -> FLOATING WINDOW
+        if (window.innerWidth < window.outerWidth * 0.90) {
+           onViolationDetected('split_screen_w', '🚫 Floating Window Terdeteksi!');
+        }
+      }
+
+      // D. Deteksi DevTools (Desktop/Browser Mode)
+      const threshold = 160;
+      if (window.outerWidth - window.innerWidth > threshold || window.outerHeight - window.innerHeight > threshold) {
+        onViolationDetected('devtools', '🚫 DevTools/Console Terbuka!');
+      }
+
+      lastActivityRef.current = now;
     };
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) onViolationDetected('fullscreen', '🚫 Dilarang keluar fullscreen!');
-    };
-    const handleCopy = (e) => {
-      e.preventDefault();
-      if (navigator.clipboard) navigator.clipboard.writeText("CHEAT DETECTED");
-      onViolationDetected('copy', '🚫 Copy diblokir!');
-    };
-    const handlePaste = (e) => { e.preventDefault(); onViolationDetected('paste', '🚫 Paste diblokir!'); };
+
+    // Jalankan pemeriksaan setiap 500ms (Cepat menangkap floating window)
+    checkIntervalRef.current = setInterval(checkScreenIntegrity, 500);
+
+    // 3. EVENT LISTENERS TAMBAHAN
+    const handleBlur = () => onViolationDetected('blur', '⚠️ Fokus Hilang (Split/Minimize)!');
+    const handleCopy = (e) => { e.preventDefault(); onViolationDetected('copy', '🚫 Copy Blocked'); };
+    const handlePaste = (e) => { e.preventDefault(); onViolationDetected('paste', '🚫 Paste Blocked'); };
+    const handleContextMenu = (e) => { e.preventDefault(); onViolationDetected('rightClick', '🚫 Right Click Blocked'); };
     
-    // Hard Block Right Click
-    const handleContextMenu = (e) => { e.preventDefault(); onViolationDetected('rightClick', '🚫 Klik kanan diblokir!'); };
-    const handleDragStart = (e) => { e.preventDefault(); return false; };
-
     window.addEventListener('blur', handleBlur);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('copy', handleCopy);
     document.addEventListener('paste', handlePaste);
     document.addEventListener('contextmenu', handleContextMenu);
-    document.addEventListener('dragstart', handleDragStart);
 
     return () => {
+      clearInterval(checkIntervalRef.current);
       window.removeEventListener('blur', handleBlur);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('copy', handleCopy);
       document.removeEventListener('paste', handlePaste);
       document.removeEventListener('contextmenu', handleContextMenu);
-      document.removeEventListener('dragstart', handleDragStart);
+      document.head.removeChild(style);
     };
-  }, [isActive, onViolationDetected]);
-
-  // --- 5. KEYBOARD SECURITY ---
-  useEffect(() => {
-    if (!isActive) return;
-    
-    const nukeClipboard = () => { try { if (navigator.clipboard) navigator.clipboard.writeText(" "); } catch (e) {} };
-
-    const handleKeyDown = (e) => {
-      // PrintScreen
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        e.preventDefault(); nukeClipboard();
-        onViolationDetected('screenshot', '🚫 Screenshot dilarang!');
-        return false;
-      }
-      // Windows Key / Meta
-      if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) {
-        e.preventDefault();
-        onViolationDetected('systemKey', '🚫 Tombol Sistem dilarang!');
-        return false;
-      }
-      // Shortcuts Forbidden
-      if (
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && ['I', 'J', 'C', 'S'].includes(e.key.toUpperCase())) ||
-        (e.ctrlKey && ['U', 'S', 'P'].includes(e.key.toUpperCase())) ||
-        (e.altKey && e.key === 'Tab')
-      ) {
-        e.preventDefault();
-        onViolationDetected('devtools', '🚫 Shortcut dilarang!');
-        return false;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isActive, onViolationDetected]);
 
   return null;
 };
 
-// --- SP1 MODAL COMPONENT ---
+// --- SP1 MODAL ---
 const SP1Modal = ({ data, onClose }) => (
   <div className="fixed inset-0 z-[9999] bg-red-900/95 flex items-center justify-center p-4 animate-in zoom-in duration-300 backdrop-blur-sm" onContextMenu={(e) => e.preventDefault()}>
     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border-4 border-red-600">
       <div className="bg-red-600 p-6 text-center">
         <ShieldAlert size={64} className="text-white mx-auto mb-2 animate-bounce" />
         <h2 className="text-3xl font-black text-white uppercase tracking-wider">PERINGATAN!</h2>
-        <div className="inline-block bg-red-800 text-red-100 px-3 py-1 rounded-full text-xs font-bold mt-2 border border-red-400">
-          SURAT PERINGATAN 1 (SP1)
-        </div>
+        <div className="inline-block bg-red-800 text-red-100 px-3 py-1 rounded-full text-xs font-bold mt-2 border border-red-400">SURAT PERINGATAN 1 (SP1)</div>
       </div>
       <div className="p-8 text-center space-y-4">
         <div>
-          <p className="text-gray-500 text-xs font-bold uppercase mb-1">Pelanggaran Terdeteksi:</p>
-          <p className="text-xl font-bold text-red-600 bg-red-50 py-3 rounded-lg border border-red-100">
-            "{data?.message || 'Aktivitas Mencurigakan'}"
-          </p>
+          <p className="text-gray-500 text-xs font-bold uppercase mb-1">Pelanggaran:</p>
+          <p className="text-xl font-bold text-red-600 bg-red-50 py-3 rounded-lg border border-red-100">"{data?.message || 'Aktivitas Ilegal'}"</p>
         </div>
-        <p className="text-gray-700 text-sm leading-relaxed">
-          Ini adalah <b>PERINGATAN TERAKHIR</b>. Sistem Anti-Cheat mendeteksi aktivitas yang tidak diizinkan.
-        </p>
-        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 text-left text-xs text-yellow-800">
-          <b>⚠️ Konsekuensi Selanjutnya:</b><br/>
-          Satu pelanggaran lagi = <b>DISKUALIFIKASI (Auto Submit)</b>.
-        </div>
+        <p className="text-gray-700 text-sm leading-relaxed">Sistem mendeteksi Split Screen, Minimize, atau Floating Window.</p>
+        <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 text-left text-xs text-yellow-800"><b>⚠️ Sanksi:</b><br/>Satu pelanggaran lagi = <b>DISKUALIFIKASI (Auto Submit)</b>.</div>
       </div>
       <div className="p-4 bg-gray-50 border-t border-gray-200">
-        <button 
-          onClick={onClose}
-          className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition shadow-lg transform hover:-translate-y-1 active:scale-95"
-        >
-          SAYA MENGERTI & LANJUTKAN
-        </button>
+        <button onClick={onClose} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition">KEMBALI KE FULLSCREEN</button>
       </div>
     </div>
   </div>
@@ -258,20 +176,20 @@ const UTBKStudentApp = () => {
   const [leaderboard, setLeaderboard] = useState([]);
   const [myRank, setMyRank] = useState(null);
   
-  // --- SECURITY STATES (LIFTED UP FOR PERSISTENCE) ---
-  // Fix: Violation Count dipindah ke sini agar tidak reset saat ganti layar
+  // --- SECURITY STATES (PERSISTENT) ---
+  // State ini ada di induk agar tidak hilang saat transisi layar (Countdown -> Test -> Break)
   const [violationCount, setViolationCount] = useState(0); 
   const [violationReason, setViolationReason] = useState(null);
   const [securityActive, setSecurityActive] = useState(false);
   const [sp1Data, setSp1Data] = useState(null); 
 
-  // --- NEW: LANDSCAPE LOCK STATE ---
+  // --- LANDSCAPE LOCK STATE ---
   const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
 
   const timerRef = useRef(null);
 
   // --- 1. CORE VIOLATION LOGIC (CENTRALIZED) ---
-  // Fungsi ini menangani pelanggaran dari semua layar (Countdown, Test, Break)
+  // Menangani pelanggaran dari semua fase (Countdown, Test, Break)
   const handleViolationLogic = async (type, message) => {
     // Jika sudah didiskualifikasi, abaikan trigger selanjutnya
     if (violationReason) return;
@@ -293,14 +211,14 @@ const UTBKStudentApp = () => {
 
     // 3. Eksekusi Hukuman
     if (newCount === 1) {
-        // SP1: Peringatan Keras (Modal tidak bisa ditutup sembarangan)
+        // SP1: Peringatan Keras
         if (!sp1Data) {
             setSp1Data({ type, message });
             if (document.activeElement) document.activeElement.blur();
         }
     } else if (newCount >= SECURITY_CONFIG.MAX_VIOLATIONS) {
         // SP2: DISKUALIFIKASI LANGSUNG
-        forceSubmitExam(`Pelanggaran Keamanan #${newCount}: ${message}`);
+        forceSubmitExam(`Pelanggaran #${newCount}: ${message}`);
     }
   };
 
@@ -308,7 +226,7 @@ const UTBKStudentApp = () => {
   const forceSubmitExam = (reason) => {
     setViolationReason(reason);
     setSecurityActive(false); 
-    setSp1Data(null); // Tutup SP1 jika ada
+    setSp1Data(null); 
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     setScreen('result'); 
   };
