@@ -707,30 +707,36 @@ const UTBKStudentApp = () => {
   }, [screen]);
 
   // --- TOKEN LOGIN ---
-  // --- TOKEN LOGIN (DEBUG VERSION) ---
   const handleTokenLogin = async () => {
-    console.log("1. Memulai login...");
-    if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
+    console.log(">>> 1. Memulai proses login...");
+    console.log(">>> Input Token Raw:", inputToken);
+
+    if (!inputToken.trim()) { 
+        alert('Masukkan Kode Token!'); 
+        return; 
+    }
     
-    // Pastikan input bersih dari spasi
-    const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
-    console.log("2. Kode Token diproses:", tokenCode);
+    // Sanitasi input: Ubah ke huruf besar & hapus semua spasi
+    const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, '');
+    console.log(">>> 2. Token diproses menjadi:", tokenCode);
 
     const docRef = doc(db, 'tokens', tokenCode);
     
     try {
-      console.log("3. Menghubungi Database...");
+      console.log(">>> 3. Menghubungi Firebase Firestore...");
+      
+      // Ambil data dokumen
       const docSnap = await getDoc(docRef);
-      console.log("4. Respon Database diterima.");
+      console.log(">>> 4. Respon diterima dari Firebase.");
       
       if (!docSnap.exists()) { 
-        console.error("TOKEN TIDAK DITEMUKAN DI DB");
-        alert('Token TIDAK DITEMUKAN. Cek Database!'); 
+        console.error("❌ ERROR: Token tidak ditemukan di database.");
+        alert(`Token '${tokenCode}' TIDAK DITEMUKAN. Pastikan huruf besar/kecil dan angka benar.`); 
         return; 
       }
       
       const data = docSnap.data();
-      console.log("5. Data Token:", data);
+      console.log(">>> 5. Data Token ditemukan:", data);
 
       const createdTime = new Date(data.createdAt).getTime();
       const now = Date.now();
@@ -739,12 +745,11 @@ const UTBKStudentApp = () => {
 
       // Cek Status USED
       if (data.status === 'used') {
-          console.log("Status: USED");
+          console.log(">>> Status Token: USED (Sedang mencoba resume/lihat hasil)");
           if ((now - createdTime) > sixtyDays) {
-              alert(`Token kadaluarsa (sudah > 60 hari).`);
+              alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
               return;
           }
-          // Login Ulang (Resume)
           localStorage.setItem('utbk_student_token', tokenCode);
           setStudentName(data.studentName);
           setCurrentTokenCode(tokenCode);
@@ -752,32 +757,59 @@ const UTBKStudentApp = () => {
           if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
           if (testOrder.length === 0) setTestOrder(SUBTESTS); 
           setScreen('result');
+          console.log(">>> Berhasil masuk ke layar Result.");
           return;
       }
 
-      // Cek Expired 24 Jam
+      // Cek Expired 24 Jam (Jika status active)
       if ((now - createdTime) > oneDay) { 
+          console.warn(">>> Token Expired (> 24 Jam).");
           alert('Token SUDAH KADALUARSA (Expired > 24 Jam).'); 
           return; 
       }
 
-      console.log("6. Token Valid. Meminta konfirmasi user...");
-      if (confirm(`Login sebagai ${data.studentName}?\n\nKlik OK untuk memulai.`)) {
-        console.log("7. User klik OK. Memulai setup...");
+      console.log(">>> 6. Token Valid. Meminta konfirmasi user...");
+      if (confirm(`Login sebagai ${data.studentName}?\n\n⚠️ PERINGATAN:\n- Ujian menggunakan sistem anti-cheat KETAT\n- Screenshot, split screen, pindah tab akan terdeteksi\n- Maksimal ${SECURITY_CONFIG.MAX_VIOLATIONS} pelanggaran sebelum auto-submit\n\nLanjutkan?`)) {
         
-        // Coba Fullscreen
-        await forceFullscreen();
-        
-        // Update DB
-        console.log("8. Mengupdate Login Time ke DB...");
+        console.log(">>> 7. User klik OK. Setup ujian...");
+
+        // Update DB: Login Time
         try {
+            console.log(">>> 8. Mengupdate field loginAt di database...");
             await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
-            console.log("9. Update Berhasil!");
-        } catch (err) {
-            console.error("GAGAL UPDATE DOC:", err);
-            alert("Gagal update database. Cek Rules/Permission!");
+            console.log(">>> 9. Update Database Berhasil.");
+        } catch (dbError) {
+            console.error("❌ GAGAL UPDATE DB:", dbError);
+            alert("Gagal koneksi database (Update Permission). Cek Rules Firebase!");
             return;
         }
+
+        localStorage.setItem('utbk_student_token', tokenCode);
+        setStudentName(data.studentName);
+        setCurrentTokenCode(tokenCode);
+        setViolationReason(null);
+        setViolationCount(0); 
+        setIsPaused(false);   
+        
+        // Coba Fullscreen
+        try { 
+            await document.documentElement.requestFullscreen(); 
+        } catch (err) {
+            console.warn("Fullscreen otomatis gagal (biasanya perlu interaksi user manual):", err);
+        }
+
+        setCountdownTime(5); 
+        setScreen('countdown'); 
+        console.log(">>> 10. BERHASIL! Pindah ke layar Countdown.");
+      } else {
+          console.log(">>> User membatalkan login.");
+      }
+
+    } catch (error) { 
+      console.error("🔥 FATAL ERROR:", error); 
+      alert(`TERJADI ERROR:\n${error.message}\n\nSilakan cek Console (F12) untuk detail.`); 
+    }
+  };
 
         // Simpan Local Storage
         localStorage.setItem('utbk_student_token', tokenCode);
