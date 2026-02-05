@@ -61,7 +61,7 @@ const getWeight = (difficultyLevel) => {
     }
 };
 
-// --- ADVANCED SECURITY MONITOR (SIMPLIFIED SP1/SP2) ---
+// --- ADVANCED SECURITY MONITOR (FIXED LOGIC) ---
 const AdvancedSecurityMonitor = ({ 
   isActive, 
   tokenCode, 
@@ -333,8 +333,10 @@ const UTBKStudentApp = () => {
     }
   };
 
-  // --- 3. SECURITY HANDLERS ---
+  // --- 3. SECURITY HANDLERS (FIXED DOUBLE SP1) ---
   const handleSecurityWarning = (type, message) => {
+    // FIX: Cegah modal muncul dua kali atau menumpuk
+    if (sp1Data || violationReason) return; 
     setSp1Data({ type, message });
     if (document.activeElement) document.activeElement.blur();
   };
@@ -687,7 +689,7 @@ const UTBKStudentApp = () => {
     }
   }, [screen]);
 
-  // --- TOKEN LOGIN ---
+  // --- TOKEN LOGIN (FIXED SECURITY) ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
@@ -724,6 +726,10 @@ const UTBKStudentApp = () => {
         setCurrentTokenCode(tokenCode);
         setViolationReason(null);
         setSp1Data(null); 
+        
+        // FIX: Aktifkan Security SEBELUM countdown
+        setSecurityActive(true); 
+        
         await forceFullscreen();
         setCountdownTime(5); 
         setScreen('countdown'); 
@@ -761,11 +767,14 @@ const UTBKStudentApp = () => {
     const targetTime = Date.now() + (durationSec * 1000);
     setEndTime(targetTime);
     setTimeLeft(durationSec);
+    
+    // PASTIKAN SECURITY AKTIF
     setSecurityActive(true);
+    
     setScreen('test');
   };
 
-  // --- TIMER ---
+  // --- TIMER LOGIC (FIXED SECURITY ON BREAK) ---
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -775,36 +784,54 @@ const UTBKStudentApp = () => {
             if (delta <= 0) {
                 clearInterval(timerRef.current);
                 setTimeLeft(0);
+                // Pindah subtes atau selesai
                 if (currentSubtestIndex < testOrder.length - 1) { 
-                  setSecurityActive(false); setScreen('break'); setBreakTime(10); 
+                  // FIX: JANGAN matikan security saat break
+                  // setSecurityActive(false); <--- DIHAPUS
+                  setScreen('break'); 
+                  setBreakTime(10); 
                 } 
-                else { setSecurityActive(false); setScreen('result'); }
+                else { 
+                  setSecurityActive(false); // Matikan hanya saat Result
+                  setScreen('result'); 
+                }
             } else { setTimeLeft(delta); }
         }, 1000);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [screen, endTime, currentSubtestIndex, testOrder]);
 
-  // Countdown & Break
+  // Countdown & Break Logic
   useEffect(() => { 
-      if (screen === 'countdown' && countdownTime > 0) { const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); return () => clearTimeout(t); } 
-      else if (screen === 'countdown' && countdownTime === 0) { startTest(true); } 
+      if (screen === 'countdown' && countdownTime > 0) { 
+        const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
+        return () => clearTimeout(t); 
+      } 
+      else if (screen === 'countdown' && countdownTime === 0) { 
+        startTest(true); 
+      } 
   }, [countdownTime, screen]);
 
   useEffect(() => { 
-      if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); } 
+      if (screen === 'break' && breakTime > 0) { 
+        const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
+        return () => clearTimeout(t); 
+      } 
       else if (screen === 'break' && breakTime === 0) { 
           const n = currentSubtestIndex + 1; 
-          setCurrentSubtestIndex(n); setCurrentQuestion(0); 
+          setCurrentSubtestIndex(n); 
+          setCurrentQuestion(0); 
           const durationSec = testOrder[n].time * 60; 
           setEndTime(Date.now() + (durationSec * 1000));
           setTimeLeft(durationSec);
-          setSecurityActive(true); 
+          // Security tetap aktif dari sebelumnya
           setScreen('test'); 
       } 
   }, [breakTime, screen]);
 
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
+  useEffect(() => { 
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  }, [currentQuestion, currentSubtestIndex, screen]);
   
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
@@ -824,16 +851,26 @@ const UTBKStudentApp = () => {
   const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
   
   const handleNextQuestion = () => {
-    if (currentQuestion < currentSubtest.questions - 1) { setCurrentQuestion(currentQuestion + 1); } 
+    if (currentQuestion < currentSubtest.questions - 1) { 
+      setCurrentQuestion(currentQuestion + 1); 
+    } 
     else { 
-      if (currentSubtestIndex < testOrder.length - 1) { setSecurityActive(false); setScreen('break'); setBreakTime(10); } 
-      else { setSecurityActive(false); setScreen('result'); } 
+      if (currentSubtestIndex < testOrder.length - 1) { 
+        // FIX: Security tetap aktif saat pindah subtes
+        setScreen('break'); 
+        setBreakTime(10); 
+      } else { 
+        setSecurityActive(false);
+        setScreen('result'); 
+      } 
     }
   };
 
   const FooterLiezira = () => (
     <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
-      <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span></p>
+      <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
+        <Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span>
+      </p>
     </div>
   );
 
@@ -864,6 +901,16 @@ const UTBKStudentApp = () => {
         <h2 className="text-2xl font-bold mb-4 uppercase tracking-widest">Persiapan Ujian</h2>
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
         <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman. Dilarang keluar fullscreen.</p>
+        
+        {/* MODAL SECURITY CHECK */}
+        <AdvancedSecurityMonitor 
+          isActive={securityActive && !sp1Data} // Monitor aktif saat countdown!
+          tokenCode={currentTokenCode}
+          onForceSubmit={forceSubmitExam} 
+          onWarning={handleSecurityWarning} 
+        />
+        {sp1Data && <SP1Modal data={sp1Data} onClose={closeSP1} />}
+
         <div className="mt-8 bg-red-900/50 border-2 border-red-400 rounded-xl p-4 max-w-md mx-4">
           <p className="text-red-200 text-xs font-bold flex items-center gap-2 mb-2">
             <Shield size={16}/> SISTEM KEAMANAN AKTIF
@@ -890,7 +937,6 @@ const UTBKStudentApp = () => {
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           
-          {/* SECURITY WARNING */}
           <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900">
               <ShieldAlert size={18}/> STRICT MODE ANTI-CHEAT:
@@ -936,6 +982,15 @@ const UTBKStudentApp = () => {
         className="min-h-screen w-full bg-gradient-to-br from-indigo-50 to-white flex flex-col items-center justify-center p-4 select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
+        {/* MONITOR TETAP AKTIF SAAT BREAK */}
+        <AdvancedSecurityMonitor 
+          isActive={securityActive && !sp1Data} 
+          tokenCode={currentTokenCode}
+          onForceSubmit={forceSubmitExam} 
+          onWarning={handleSecurityWarning} 
+        />
+        {sp1Data && <SP1Modal data={sp1Data} onClose={closeSP1} />}
+
         <div className="relative flex items-center justify-center mb-8">
           <div className="absolute w-64 h-64 rounded-full border-4 border-indigo-100"></div>
           <div className="absolute w-60 h-60 rounded-full border-8 border-indigo-500 animate-pulse opacity-20"></div>
@@ -947,6 +1002,7 @@ const UTBKStudentApp = () => {
           </div>
         </div>
         <p className="text-sm text-gray-400 font-medium tracking-wide">LANJUT OTOMATIS...</p>
+        <p className="text-xs text-red-400 font-bold mt-4 flex items-center gap-1"><Shield size={12}/> Security Monitor Active</p>
       </div>
     );
   }
