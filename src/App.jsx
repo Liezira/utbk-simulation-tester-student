@@ -707,6 +707,7 @@ const UTBKStudentApp = () => {
   }, [screen]);
 
   // --- TOKEN LOGIN ---
+  // --- 2. TOKEN LOGIN (DEBUG MODE) ---
   const handleTokenLogin = async () => {
     console.log(">>> 1. Memulai proses login...");
     console.log(">>> Input Token Raw:", inputToken);
@@ -808,24 +809,6 @@ const UTBKStudentApp = () => {
     } catch (error) { 
       console.error("🔥 FATAL ERROR:", error); 
       alert(`TERJADI ERROR:\n${error.message}\n\nSilakan cek Console (F12) untuk detail.`); 
-    }
-  };
-
-        // Simpan Local Storage
-        localStorage.setItem('utbk_student_token', tokenCode);
-        setStudentName(data.studentName);
-        setCurrentTokenCode(tokenCode);
-        setViolationReason(null);
-        setCountdownTime(5); 
-        
-        console.log("10. Pindah ke layar Countdown");
-        setScreen('countdown'); 
-      } else {
-          console.log("User membatalkan login.");
-      }
-    } catch (error) { 
-      console.error("ERROR FATAL:", error); 
-      alert(`Error Detail: ${error.message}`); 
     }
   };
   
