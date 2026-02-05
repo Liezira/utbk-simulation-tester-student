@@ -270,27 +270,6 @@ const SP1Modal = ({ data, onClose }) => (
   </div>
 );
 
-// --- WATERMARK COMPONENT ---
-const SecurityWatermark = ({ studentName, tokenCode }) => {
-  const watermarkText = `${studentName} • ${tokenCode} • ${new Date().toLocaleString('id-ID')}`;
-  return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-      pointerEvents: 'none', zIndex: 9998, opacity: 0.08,
-      display: 'flex', flexWrap: 'wrap', justifyContent: 'space-around', alignItems: 'center', overflow: 'hidden',
-    }}>
-      {Array(30).fill(watermarkText).map((text, i) => (
-        <span key={i} style={{
-            transform: 'rotate(-45deg)', fontSize: '16px', fontWeight: 'bold',
-            color: '#000', margin: '40px', whiteSpace: 'nowrap',
-          }}
-        >
-          {text}
-        </span>
-      ))}
-    </div>
-  );
-};
 // --- MAIN APP COMPONENT ---
 const UTBKStudentApp = () => {
   const [screen, setScreen] = useState('landing');
@@ -1198,12 +1177,6 @@ const UTBKStudentApp = () => {
       
       {/* 2. Modal SP1: Muncul jika sp1Data tidak null */}
       {sp1Data && <SP1Modal data={sp1Data} onClose={closeSP1} />}
-      
-      {/* 3. Watermark: Overlay nama siswa */}
-      <SecurityWatermark 
-        studentName={studentName}
-        tokenCode={currentTokenCode}
-      />
 
       {/* HEADER */}
       <div className="sticky top-0 z-40 bg-indigo-700 text-white p-4 shadow-lg">
