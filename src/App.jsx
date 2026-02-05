@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin, AlertOctagon, AlertTriangle, Shield, Eye, Camera } from 'lucide-react';
+import { Clock, Ticket, AlertCircle, CheckCircle, XCircle, ShieldAlert, Timer, Trophy, Copyright, CheckSquare, AlignLeft, List, Activity, TrendingUp, BookOpen, PieChart, Target, Lightbulb, LayoutDashboard, MapPin, AlertOctagon, AlertTriangle, Shield, Eye, Camera, Smartphone } from 'lucide-react';
 import { db } from './firebase'; 
 import { doc, getDoc, updateDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import { getApp } from 'firebase/app';
@@ -33,10 +33,7 @@ const SUBTESTS = [
 
 // --- SECURITY CONFIGURATION ---
 const SECURITY_CONFIG = {
-  MAX_VIOLATIONS: 2, // SP1 lalu SP2 (Auto Submit)
-  MAX_BLUR_COUNT: 3, 
-  MAX_VISIBILITY_CHANGE: 2,
-  SCREENSHOT_CHECK_INTERVAL: 2000, 
+  MAX_VIOLATIONS: 2, // SP1 -> SP2 (Auto Submit)
   PASTE_BLOCKED: true, 
   COPY_BLOCKED: true, 
   DEVTOOLS_BLOCKED: true, 
@@ -50,7 +47,7 @@ const getQuestionDifficulty = (question, index) => {
         if (question.difficulty === 'medium') return 2;
         return 1;
     }
-    // Logic fallback: Kelipatan 3 = Hard, Genap = Medium, Ganjil = Easy
+    // Logic fallback
     if ((index + 1) % 3 === 0) return 3; 
     if ((index + 1) % 2 === 0) return 2; 
     return 1; 
@@ -64,35 +61,33 @@ const getWeight = (difficultyLevel) => {
     }
 };
 
-// --- ADVANCED SECURITY MONITOR (SIMPLIFIED LOGIC) ---
+// --- ADVANCED SECURITY MONITOR (SIMPLIFIED SP1/SP2) ---
 const AdvancedSecurityMonitor = ({ 
   isActive, 
   tokenCode, 
   onForceSubmit,
   onWarning 
 }) => {
-  // Kita ganti state object yang ribet dengan satu counter sederhana
   const [totalViolations, setTotalViolations] = useState(0);
-
   const lastActivityRef = useRef(Date.now());
   const screenshotCheckRef = useRef(null);
   const devtoolsCheckRef = useRef(null);
 
-  // --- LOGIC PELANGGARAN UTAMA ---
+  // --- LOGIC PELANGGARAN ---
   const handleViolation = async (type, message) => {
     setTotalViolations(prev => {
       const newCount = prev + 1;
 
-      // Log ke Firebase (Background process, dont await)
+      // Log ke Firebase (Background)
       logViolationToFirebase(type, message, newCount);
 
-      // --- LOGIC SP1 vs DISKUALIFIKASI ---
+      // --- LOGIC SP1 vs SP2 ---
       if (newCount === 1) {
-        // Pelanggaran Pertama -> Trigger SP1
+        // Pelanggaran Pertama -> SP1 (Warning)
         onWarning(type, message);
       } 
       else if (newCount >= SECURITY_CONFIG.MAX_VIOLATIONS) {
-        // Pelanggaran Kedua -> Auto Submit (SP2)
+        // Pelanggaran Kedua -> SP2 (Auto Submit)
         onForceSubmit(`DISKUALIFIKASI: Melanggar aturan keamanan (SP 2).`);
       }
 
@@ -130,7 +125,7 @@ const AdvancedSecurityMonitor = ({
     const detectScreenAnomalies = () => {
       const currentTime = Date.now();
       const timeSinceLastActivity = currentTime - lastActivityRef.current;
-      // Jika hidden sangat cepat (<100ms) lalu aktif lagi -> Indikasi Screenshot Tool
+      // Indikasi Screenshot: Layar freeze/blur sangat cepat (<100ms)
       if (document.hidden && timeSinceLastActivity < 100) {
         handleViolation('screenshot', '⚠️ Terdeteksi kedipan layar (Indikasi Screenshot)');
       }
@@ -147,7 +142,7 @@ const AdvancedSecurityMonitor = ({
       const widthThreshold = window.outerWidth - window.innerWidth > threshold;
       const heightThreshold = window.outerHeight - window.innerHeight > threshold;
       if (widthThreshold || heightThreshold) {
-        handleViolation('devtools', '🚫 DevTools terdeteksi terbuka! Tutup segera.');
+        handleViolation('devtools', '🚫 DevTools terdeteksi terbuka!');
       }
     };
     devtoolsCheckRef.current = setInterval(detectDevTools, 1500);
@@ -158,19 +153,21 @@ const AdvancedSecurityMonitor = ({
   useEffect(() => {
     if (!isActive) return;
 
-    const handleBlur = () => handleViolation('blur', '⚠️ Dilarang berpindah aplikasi!');
+    const handleBlur = () => handleViolation('blur', '⚠️ Dilarang pindah aplikasi/split screen!');
     const handleVisibilityChange = () => {
-      if (document.hidden) handleViolation('visibility', '⚠️ Terdeteksi meninggalkan halaman ujian!');
+      if (document.hidden) handleViolation('visibility', '⚠️ Terdeteksi pindah tab!');
     };
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement) handleViolation('fullscreen', '🚫 Dilarang keluar dari mode fullscreen!');
+      if (!document.fullscreenElement) handleViolation('fullscreen', '🚫 Dilarang keluar fullscreen!');
     };
     const handleCopy = (e) => {
       e.preventDefault();
       if (navigator.clipboard) navigator.clipboard.writeText("CHEAT DETECTED");
-      handleViolation('copy', '🚫 Copy text diblokir!');
+      handleViolation('copy', '🚫 Copy diblokir!');
     };
     const handlePaste = (e) => { e.preventDefault(); handleViolation('paste', '🚫 Paste diblokir!'); };
+    
+    // Hard Block Right Click
     const handleContextMenu = (e) => { e.preventDefault(); handleViolation('rightClick', '🚫 Klik kanan diblokir!'); };
     const handleDragStart = (e) => { e.preventDefault(); return false; };
 
@@ -203,16 +200,16 @@ const AdvancedSecurityMonitor = ({
       // PrintScreen
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         e.preventDefault(); nukeClipboard();
-        handleViolation('screenshot', '🚫 Screenshot dilarang! (PrintScreen detected)');
+        handleViolation('screenshot', '🚫 Screenshot dilarang!');
         return false;
       }
       // Windows Key / Meta
       if (e.key === 'Meta' || e.key === 'OS' || e.keyCode === 91 || e.keyCode === 92) {
         e.preventDefault();
-        handleViolation('systemKey', '🚫 Dilarang menekan tombol Sistem/Windows!');
+        handleViolation('systemKey', '🚫 Tombol Sistem dilarang!');
         return false;
       }
-      // Shortcuts (Alt+Tab, F12, Ctrl+Shift+I/J/C)
+      // Shortcuts Forbidden
       if (
         e.key === 'F12' ||
         (e.ctrlKey && e.shiftKey && ['I', 'J', 'C', 'S'].includes(e.key.toUpperCase())) ||
@@ -220,7 +217,7 @@ const AdvancedSecurityMonitor = ({
         (e.altKey && e.key === 'Tab')
       ) {
         e.preventDefault();
-        handleViolation('devtools', '🚫 Shortcut keyboard terlarang!');
+        handleViolation('devtools', '🚫 Shortcut dilarang!');
         return false;
       }
     };
@@ -234,28 +231,28 @@ const AdvancedSecurityMonitor = ({
 
 // --- SP1 MODAL COMPONENT ---
 const SP1Modal = ({ data, onClose }) => (
-  <div className="fixed inset-0 z-[9999] bg-red-900/90 flex items-center justify-center p-4 animate-in zoom-in duration-300 backdrop-blur-sm">
+  <div className="fixed inset-0 z-[9999] bg-red-900/95 flex items-center justify-center p-4 animate-in zoom-in duration-300 backdrop-blur-sm" onContextMenu={(e) => e.preventDefault()}>
     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border-4 border-red-600">
       <div className="bg-red-600 p-6 text-center">
         <ShieldAlert size={64} className="text-white mx-auto mb-2 animate-bounce" />
-        <h2 className="text-3xl font-black text-white uppercase tracking-wider">PERINGATAN KERAS!</h2>
+        <h2 className="text-3xl font-black text-white uppercase tracking-wider">PERINGATAN!</h2>
         <div className="inline-block bg-red-800 text-red-100 px-3 py-1 rounded-full text-xs font-bold mt-2 border border-red-400">
           SURAT PERINGATAN 1 (SP1)
         </div>
       </div>
       <div className="p-8 text-center space-y-4">
         <div>
-          <p className="text-gray-500 text-xs font-bold uppercase mb-1">Jenis Pelanggaran Terdeteksi:</p>
+          <p className="text-gray-500 text-xs font-bold uppercase mb-1">Pelanggaran Terdeteksi:</p>
           <p className="text-xl font-bold text-red-600 bg-red-50 py-3 rounded-lg border border-red-100">
             "{data?.message || 'Aktivitas Mencurigakan'}"
           </p>
         </div>
         <p className="text-gray-700 text-sm leading-relaxed">
-          Sistem mendeteksi aktivitas yang melanggar aturan ujian. Ini adalah <b>PERINGATAN TERAKHIR</b>.
+          Ini adalah <b>PERINGATAN TERAKHIR</b>. Sistem Anti-Cheat mendeteksi aktivitas yang tidak diizinkan.
         </p>
         <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 text-left text-xs text-yellow-800">
           <b>⚠️ Konsekuensi Selanjutnya:</b><br/>
-          Jika Anda melakukan pelanggaran satu kali lagi, ujian akan <b>OTOMATIS TERKUNCI</b> dan Anda dinyatakan <b>DISKUALIFIKASI</b>.
+          Satu pelanggaran lagi = <b>DISKUALIFIKASI (Auto Submit)</b>.
         </div>
       </div>
       <div className="p-4 bg-gray-50 border-t border-gray-200">
@@ -263,7 +260,7 @@ const SP1Modal = ({ data, onClose }) => (
           onClick={onClose}
           className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 rounded-xl transition shadow-lg transform hover:-translate-y-1 active:scale-95"
         >
-          SAYA MENGERTI & BERJANJI TIDAK MENGULANGI
+          SAYA MENGERTI & LANJUTKAN
         </button>
       </div>
     </div>
@@ -298,43 +295,60 @@ const UTBKStudentApp = () => {
   const [securityActive, setSecurityActive] = useState(false);
   const [sp1Data, setSp1Data] = useState(null); // Data untuk Modal SP1
 
+  // --- NEW: LANDSCAPE LOCK STATE ---
+  const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
+
   const timerRef = useRef(null);
 
-  // --- FORCE FULLSCREEN HELPER ---
+  // --- 1. ORIENTATION CHECK (BLOKIR LANDSCAPE DI HP) ---
+  useEffect(() => {
+    const checkOrientation = () => {
+      // Definisi HP: Lebar layar < 1024px (Tablet Portrait/HP)
+      // Cek Landscape: Lebar > Tinggi
+      const isMobileSize = window.innerWidth < 1024; 
+      const isLandscape = window.innerWidth > window.innerHeight;
+
+      // Blokir jika HP & Landscape
+      if (isMobileSize && isLandscape) {
+        setIsLandscapeMobile(true);
+        if (document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+      } else {
+        setIsLandscapeMobile(false);
+      }
+    };
+
+    window.addEventListener('resize', checkOrientation);
+    checkOrientation(); // Cek awal saat load
+    return () => window.removeEventListener('resize', checkOrientation);
+  }, []);
+
+  // --- 2. FORCE FULLSCREEN HELPER ---
   const forceFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen();
       }
     } catch (err) {
-      console.warn('Fullscreen failed or rejected:', err);
+      console.warn('Fullscreen failed/rejected:', err);
     }
   };
 
-  // --- SECURITY HANDLERS (Callback dari AdvancedSecurityMonitor) ---
-  
-  // 1. Handler Peringatan (SP1)
+  // --- 3. SECURITY HANDLERS ---
   const handleSecurityWarning = (type, message) => {
-    // Tampilkan Modal SP1
     setSp1Data({ type, message });
-    // Hentikan sementara interaksi keyboard/mouse di background (opsional, handled by modal overlay)
     if (document.activeElement) document.activeElement.blur();
   };
 
-  // 2. Handler Fatal (SP2 / Auto Submit)
   const forceSubmitExam = (reason) => {
     setViolationReason(reason);
-    setSecurityActive(false); // Matikan monitor
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(() => {});
-    }
-    setScreen('result'); // Pindah ke hasil
+    setSecurityActive(false); 
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    setScreen('result'); 
   };
 
-  // 3. Close SP1 Modal
   const closeSP1 = () => {
     setSp1Data(null);
-    forceFullscreen(); // Paksa masuk fullscreen lagi
+    forceFullscreen(); 
   };
 
   // --- SESSION RESTORE ---
@@ -365,8 +379,6 @@ const UTBKStudentApp = () => {
                             setScreen('result');
                         }
                     } else {
-                        // Logic resume ujian jika refresh (opsional, butuh logic complex untuk timer sync)
-                        // Untuk simplicity, jika active tapi refresh, anggap logout/error kecuali kita implement sync timer
                          localStorage.removeItem('utbk_student_token');
                     }
                 }
@@ -487,305 +499,7 @@ const UTBKStudentApp = () => {
     }; 
   };
 
-  // --- FINISH EXAM & LEADERBOARD ---
-  useEffect(() => {
-    if (screen === 'result' && currentTokenCode) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        setSecurityActive(false); // Stop security monitor
-
-        const finishExamProcess = async () => {
-            const { totalScore, details } = calculateScore();
-            
-            const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-            const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
-            const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
-            const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
-
-            try {
-                const tokenRef = doc(db, 'tokens', currentTokenCode);
-                await updateDoc(tokenRef, { 
-                    status: 'used',
-                    score: totalScore,
-                    scoreDetails: details,
-                    finalTimeLeft: globalTimeLeftSeconds,
-                    finishedAt: new Date().toISOString(),
-                    violation: violationReason || null,
-                    answers: answers,
-                    historyQuestions: questionOrder 
-                });
-
-                localStorage.removeItem(`answers_${currentTokenCode}`);
-
-                // Fetch Leaderboard
-                const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
-                const querySnapshot = await getDocs(q);
-                const top10 = [];
-                let rank = 1; let userRank = null;
-
-                querySnapshot.forEach((doc) => {
-                    const data = doc.data();
-                    top10.push({ 
-                        rank, 
-                        name: data.studentName, 
-                        school: data.studentSchool || '-', 
-                        score: data.score, 
-                        details: data.scoreDetails || {},
-                        timeLeft: data.finalTimeLeft 
-                    });
-                    if (data.tokenCode === currentTokenCode) userRank = rank;
-                    rank++;
-                });
-                setLeaderboard(top10);
-                setMyRank(userRank);
-            } catch (error) { console.error("Leaderboard/Save Error:", error); }
-        };
-        
-        if (globalStartTime) {
-            finishExamProcess();
-        } else {
-             // Jika hanya melihat hasil (re-login)
-             const loadLeaderboardOnly = async () => {
-                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
-                 const snap = await getDocs(q);
-                 const top10 = [];
-                 let rank = 1; let userRank = null;
-                 snap.forEach(d => {
-                     const dt = d.data();
-                     top10.push({ 
-                         rank, name: dt.studentName, school: dt.studentSchool||'-', 
-                         score: dt.score, details: dt.scoreDetails || {}, timeLeft: dt.finalTimeLeft 
-                     });
-                     if (dt.tokenCode === currentTokenCode) userRank = rank;
-                     rank++;
-                 });
-                 setLeaderboard(top10);
-                 setMyRank(userRank);
-             }
-             loadLeaderboardOnly();
-        }
-    }
-  }, [screen]);
-
-  // --- TOKEN LOGIN (DEBUG MODE & ROBUST) ---
-  const handleTokenLogin = async () => {
-    console.log(">>> 1. Login Started...");
-    if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
-    
-    // Sanitasi
-    const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
-    console.log(">>> 2. Processing Token:", tokenCode);
-
-    const docRef = doc(db, 'tokens', tokenCode);
-    
-    try {
-      console.log(">>> 3. Fetching from Firestore...");
-      const docSnap = await getDoc(docRef);
-      console.log(">>> 4. Response received.");
-      
-      if (!docSnap.exists()) { 
-        console.error("TOKEN NOT FOUND IN DB");
-        alert('Token TIDAK DITEMUKAN. Cek kembali kode Anda.'); 
-        return; 
-      }
-      
-      const data = docSnap.data();
-      const createdTime = new Date(data.createdAt).getTime();
-      const now = Date.now();
-      const oneDay = 24 * 60 * 60 * 1000;
-      const sixtyDays = 60 * 24 * 60 * 60 * 1000;
-
-      // Logic Resume / Result View
-      if (data.status === 'used') {
-          if ((now - createdTime) > sixtyDays) {
-              alert(`Maaf, Token ini sudah kadaluarsa (Arsip > 60 hari).`);
-              return;
-          }
-          localStorage.setItem('utbk_student_token', tokenCode);
-          setStudentName(data.studentName);
-          setCurrentTokenCode(tokenCode);
-          setAnswers(data.answers || {});
-          if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
-          if (testOrder.length === 0) setTestOrder(SUBTESTS); 
-          setScreen('result');
-          return;
-      }
-
-      if ((now - createdTime) > oneDay) { 
-          alert('Token SUDAH KADALUARSA (> 24 Jam). Buat token baru.'); 
-          return; 
-      }
-
-      if (confirm(`Login sebagai ${data.studentName}?\n\nPERINGATAN SECURITY:\n- Mode Anti-Cheat Aktif\n- Dilarang pindah tab/window\n- Pelanggaran ke-1: SP1\n- Pelanggaran ke-2: DISKUALIFIKASI\n\nLanjutkan?`)) {
-        
-        // Update login info
-        await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
-        
-        localStorage.setItem('utbk_student_token', tokenCode);
-        setStudentName(data.studentName);
-        setCurrentTokenCode(tokenCode);
-        setViolationReason(null);
-        
-        // Reset Security State
-        setSp1Data(null); 
-        
-        await forceFullscreen();
-        
-        setCountdownTime(5); 
-        setScreen('countdown'); 
-      }
-    } catch (error) { 
-      console.error("LOGIN ERROR:", error); 
-      alert(`Gagal Login: ${error.message}`); 
-    }
-  };
-
-  // --- START TEST LOGIC ---
-  const startTest = (bypass = false) => {
-    if (!bypass) return;
-    if (!globalStartTime) setGlobalStartTime(Date.now()); 
-
-    // Cek ketersediaan soal
-    for (const s of SUBTESTS) { 
-      if ((bankSoal[s.id]?.length || 0) < s.questions) { 
-        alert(`Soal ${s.name} belum siap di database.`); 
-        return; 
-      } 
-    }
-    
-    // Acak Subtes & Soal
-    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
-    setTestOrder(shuffledSubtests);
-    
-    const qOrder = {};
-    shuffledSubtests.forEach((subtest) => {
-      const bank = [...(bankSoal[subtest.id] || [])];
-      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
-    });
-    setQuestionOrder(qOrder);
-    
-    setCurrentSubtestIndex(0); 
-    setCurrentQuestion(0); 
-    
-    // Load jawaban tersimpan lokal (jika ada refresh)
-    const saved = localStorage.getItem(`answers_${currentTokenCode}`);
-    if(saved) setAnswers(JSON.parse(saved));
-    else setAnswers({}); 
-
-    setDoubtful({}); 
-    
-    const durationSec = shuffledSubtests[0].time * 60;
-    const targetTime = Date.now() + (durationSec * 1000);
-    setEndTime(targetTime);
-    setTimeLeft(durationSec);
-    
-    // AKTIFKAN MONITOR KEAMANAN
-    setSecurityActive(true);
-    
-    setScreen('test');
-  };
-
-  // --- TIMER LOGIC ---
-  useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (screen === 'test' && endTime) {
-        timerRef.current = setInterval(() => {
-            const now = Date.now();
-            const delta = Math.floor((endTime - now) / 1000); 
-            if (delta <= 0) {
-                clearInterval(timerRef.current);
-                setTimeLeft(0);
-                // Pindah subtes atau selesai
-                if (currentSubtestIndex < testOrder.length - 1) { 
-                  setSecurityActive(false); // Pause security saat istirahat
-                  setScreen('break'); 
-                  setBreakTime(10); 
-                } 
-                else { 
-                  setSecurityActive(false);
-                  setScreen('result'); 
-                }
-            } else { setTimeLeft(delta); }
-        }, 1000);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [screen, endTime, currentSubtestIndex, testOrder]);
-
-  // Countdown & Break Logic
-  useEffect(() => { 
-      if (screen === 'countdown' && countdownTime > 0) { 
-        const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
-        return () => clearTimeout(t); 
-      } 
-      else if (screen === 'countdown' && countdownTime === 0) { 
-        startTest(true); 
-      } 
-  }, [countdownTime, screen]);
-
-  useEffect(() => { 
-      if (screen === 'break' && breakTime > 0) { 
-        const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
-        return () => clearTimeout(t); 
-      } 
-      else if (screen === 'break' && breakTime === 0) { 
-          const n = currentSubtestIndex + 1; 
-          setCurrentSubtestIndex(n); 
-          setCurrentQuestion(0); 
-          const durationSec = testOrder[n].time * 60; 
-          setEndTime(Date.now() + (durationSec * 1000));
-          setTimeLeft(durationSec);
-          setSecurityActive(true); // Resume security
-          setScreen('test'); 
-      } 
-  }, [breakTime, screen]);
-
-  useEffect(() => { 
-    window.scrollTo({ top: 0, behavior: 'smooth' }); 
-  }, [currentQuestion, currentSubtestIndex, screen]);
-  
-  const handleAnswer = (val, type) => { 
-      const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
-      setAnswers(prev => {
-          let newAnswers = { ...prev };
-          if (type === 'pilihan_majemuk') {
-              let current = newAnswers[k] || [];
-              if (current.includes(val)) current = current.filter(x => x !== val);
-              else current.push(val);
-              newAnswers[k] = current;
-          } else {
-              newAnswers[k] = val; 
-          }
-          localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
-          return newAnswers;
-      });
-  };
-  
-  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
-  
-  const handleNextQuestion = () => {
-    if (currentQuestion < currentSubtest.questions - 1) { 
-      setCurrentQuestion(currentQuestion + 1); 
-    } 
-    else { 
-      if (currentSubtestIndex < testOrder.length - 1) { 
-        setSecurityActive(false);
-        setScreen('break'); 
-        setBreakTime(10); 
-      } else { 
-        setSecurityActive(false);
-        setScreen('result'); 
-      } 
-    }
-  };
-
-  const FooterLiezira = () => (
-    <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
-      <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
-        <Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span>
-      </p>
-    </div>
-  );
-
-  // --- ANALYSIS DASHBOARD COMPONENT ---
+  // --- ANALYSIS DASHBOARD (Responsive Fix) ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -804,125 +518,82 @@ const UTBKStudentApp = () => {
 
       const isWeakTPS = tpsAvg < litAvg;
       const mitigationText = isWeakTPS 
-          ? "Rata-rata TPS kamu lebih rendah. Fokus perbaiki logika dasar, kuantitatif, dan penalaran umum."
-          : "Kemampuan logikamu kuat, tapi Literasi perlu ditingkatkan. Perbanyak latihan membaca cepat (skimming).";
+          ? "Rata-rata TPS lebih rendah. Fokus perbaiki logika dasar & kuantitatif."
+          : "Logika kuat, tapi Literasi perlu ditingkatkan. Latihan membaca cepat.";
 
       let motivation = "Terus berjuang!";
       let badgeColor = "bg-gray-500";
       let prediction = "Perlu Peningkatan";
 
-      if (totalScore >= 700) {
-          motivation = "LUAR BIASA! Skor ini sangat kompetitif.";
-          badgeColor = "bg-emerald-500";
-          prediction = "Sangat Kompetitif";
-      } else if (totalScore >= 600) {
-          motivation = "KERJA BAGUS! Kamu di atas rata-rata.";
-          badgeColor = "bg-blue-500";
-          prediction = "Kompetitif";
-      } else if (totalScore >= 500) {
-          motivation = "RATA-RATA. Nilai aman untuk PTN menengah.";
-          badgeColor = "bg-yellow-500";
-          prediction = "Cukup Baik";
-      } else {
-          motivation = "JANGAN MENYERAH! Skor masih di bawah 500.";
-          badgeColor = "bg-orange-500";
-          prediction = "Butuh Latihan";
-      }
-
-      const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
-      const totalAllocatedSeconds = totalAllocatedMinutes * 60;
-      const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : (totalAllocatedSeconds * 1000);
-      const remainingSeconds = Math.max(0, totalAllocatedSeconds - Math.floor(usedTimeMS / 1000));
-      
-      let tempoStatus = "Tempo Ideal";
-      let tempoDesc = "Ritme pengerjaanmu sudah pas.";
-      
-      if (remainingSeconds > 3600 && totalScore < 500) { 
-          tempoStatus = "Terlalu Cepat";
-          tempoDesc = "Kurang teliti dalam mengerjakan soal.";
-      } else if (remainingSeconds < 600 && remainingSeconds > 0) { 
-          tempoStatus = "Hampir Habis";
-          tempoDesc = "Waktu mepet. Perbaiki manajemen waktu.";
-      }
+      if (totalScore >= 700) { motivation = "LUAR BIASA!"; badgeColor = "bg-emerald-500"; prediction = "Sangat Kompetitif"; } 
+      else if (totalScore >= 600) { motivation = "KERJA BAGUS!"; badgeColor = "bg-blue-500"; prediction = "Kompetitif"; } 
+      else if (totalScore >= 500) { motivation = "RATA-RATA."; badgeColor = "bg-yellow-500"; prediction = "Cukup Baik"; } 
+      else { motivation = "JANGAN MENYERAH!"; badgeColor = "bg-orange-500"; prediction = "Butuh Latihan"; }
 
       return (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
-              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-6 md:p-8 text-white shadow-2xl relative overflow-hidden border border-slate-700/50">
-                  <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] -mr-20 -mt-20 pointer-events-none"></div>
-                  <div className="relative z-10 flex flex-col lg:flex-row justify-between items-center gap-6 md:gap-8">
-                      <div className="text-center lg:text-left flex-1 space-y-4">
-                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 backdrop-blur-md">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-5 duration-500 text-left">
+              {/* Header Card */}
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+                  <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-6">
+                      <div className="text-center md:text-left flex-1 space-y-2">
+                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md">
                               <span className={`w-2 h-2 rounded-full ${badgeColor} shadow-[0_0_10px_currentColor]`}></span>
-                              <span className="text-xs font-bold uppercase tracking-widest text-indigo-200">Status: {prediction}</span>
+                              <span className="text-xs font-bold uppercase tracking-widest text-indigo-200">{prediction}</span>
                           </div>
-                          <h2 className="text-2xl md:text-3xl lg:text-4xl font-extrabold leading-tight tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-indigo-100">{motivation}</h2>
-                          <p className="text-indigo-200 text-xs md:text-sm lg:text-base max-w-xl opacity-90">Hasil ini adalah cerminan pemahamanmu saat ini.</p>
+                          <h2 className="text-3xl font-extrabold text-white">{motivation}</h2>
+                          <p className="text-indigo-200 text-sm opacity-90">Hasil simulasi berbasis IRT.</p>
                       </div>
-                      <div className="relative group">
-                          <div className="bg-white/5 p-6 md:p-8 rounded-3xl shadow-2xl border border-white/10 backdrop-blur-xl text-center min-w-[200px] md:min-w-[240px] relative z-10">
-                              <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2 block">Skor Rata-Rata</span>
-                              <div className="text-6xl md:text-8xl font-black text-white tracking-tighter drop-shadow-2xl">{totalScore}</div>
-                              <div className="mt-2 text-xs text-indigo-300 font-medium bg-indigo-900/50 py-1 px-3 rounded-full inline-block">Simulasi IRT</div>
-                          </div>
+                      <div className="bg-white/10 p-4 rounded-2xl backdrop-blur-sm text-center min-w-[120px]">
+                          <span className="text-xs font-bold uppercase text-slate-300 block mb-1">Skor Total</span>
+                          <div className="text-5xl font-black text-white">{totalScore}</div>
                       </div>
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center">
-                      <div className="w-full flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                          <h4 className="font-bold text-slate-700 flex items-center gap-2"><PieChart size={18}/> Komposisi Rata-Rata</h4>
-                      </div>
-                      <div className="flex flex-col md:flex-row items-center gap-8 w-full justify-center">
-                          <div className="relative w-32 h-32 md:w-40 md:h-40 rounded-full flex-shrink-0 flex items-center justify-center shadow-[inset_0_0_20px_rgba(0,0,0,0.05)]"
+              {/* Charts & Stats Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Chart Card */}
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                      <h4 className="font-bold text-slate-700 text-sm mb-4 flex items-center gap-2"><PieChart size={16}/> Dominasi Nilai</h4>
+                      <div className="flex items-center gap-6">
+                          {/* Simple Pie Visual */}
+                          <div className="relative w-24 h-24 rounded-full flex items-center justify-center shrink-0"
                                style={{ background: `conic-gradient(#3b82f6 0% ${tpsPercent}%, #f97316 ${tpsPercent}% 100%)` }}>
-                              <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full flex flex-col items-center justify-center shadow-lg z-10">
-                                  <span className={`text-lg md:text-xl font-black ${tpsPercent > litPercent ? 'text-blue-600' : 'text-orange-600'}`}>
-                                      {tpsPercent > litPercent ? 'TPS' : 'LITERASI'}
+                              <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm z-10">
+                                  <span className={`text-xs font-black ${tpsPercent > litPercent ? 'text-blue-600' : 'text-orange-600'}`}>
+                                      {tpsPercent > litPercent ? 'TPS' : 'LIT'}
                                   </span>
                               </div>
                           </div>
-                          <div className="space-y-4 w-full max-w-xs">
+                          <div className="space-y-2 flex-1 text-xs">
                               <div>
-                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>TPS</span> <span>{tpsPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-600 rounded-full"></div></div>
+                                  <div className="flex justify-between font-bold text-slate-500 mb-1"><span>TPS</span> <span>{tpsPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1.5"><div style={{width: `${tpsPercent}%`}} className="h-full bg-blue-600 rounded-full"></div></div>
                               </div>
                               <div>
-                                  <div className="flex justify-between text-xs font-bold text-slate-500 mb-1"><span>Literasi</span> <span>{litPercent}%</span></div>
-                                  <div className="w-full bg-slate-100 rounded-full h-2"><div style={{width: `${litPercent}%`}} className="h-full bg-orange-500 rounded-full"></div></div>
+                                  <div className="flex justify-between font-bold text-slate-500 mb-1"><span>Literasi</span> <span>{litPercent}%</span></div>
+                                  <div className="w-full bg-slate-100 rounded-full h-1.5"><div style={{width: `${litPercent}%`}} className="h-full bg-orange-500 rounded-full"></div></div>
                               </div>
                           </div>
                       </div>
                   </div>
 
-                  <div className="flex flex-col gap-6">
-                      <div className="bg-orange-50 border border-orange-200 p-6 rounded-2xl flex gap-4 items-start shadow-sm flex-1">
-                          <div className="bg-orange-500 text-white p-3 rounded-xl shadow-lg shadow-orange-200 shrink-0"><Lightbulb size={24}/></div>
-                          <div>
-                              <h4 className="font-bold text-orange-900 text-lg mb-1">Rekomendasi AI</h4>
-                              <p className="text-orange-800 text-sm leading-relaxed opacity-90">{mitigationText}</p>
-                          </div>
-                      </div>
-                      <div className="bg-slate-50 border border-slate-200 p-6 rounded-2xl flex items-center justify-between shadow-sm">
-                          <div className="flex items-center gap-3">
-                              <div className="bg-slate-200 p-2 rounded-lg text-slate-600"><Activity size={20}/></div>
-                              <div>
-                                  <h4 className="font-bold text-slate-700 text-sm">{tempoStatus}</h4>
-                                  <p className="text-xs text-slate-500 max-w-[200px]">{tempoDesc}</p>
-                              </div>
-                          </div>
-                          <div className="text-right">
-                              <span className="text-2xl font-mono font-bold text-slate-800">{formatTime(remainingSeconds)}</span>
-                          </div>
+                  {/* AI Recommendation */}
+                  <div className="bg-orange-50 border border-orange-200 p-5 rounded-2xl flex gap-3 items-start shadow-sm">
+                      <div className="bg-orange-500 text-white p-2 rounded-lg shrink-0"><Lightbulb size={20}/></div>
+                      <div>
+                          <h4 className="font-bold text-orange-900 text-sm mb-1">Analisis AI</h4>
+                          <p className="text-orange-800 text-xs leading-relaxed opacity-90">{mitigationText}</p>
                       </div>
                   </div>
               </div>
 
+              {/* Detail Subtes */}
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                      <h4 className="font-bold text-slate-700 flex items-center gap-2"><LayoutDashboard size={18}/> Performa Subtes</h4>
+                  <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                      <h4 className="font-bold text-slate-700 text-sm flex items-center gap-2"><LayoutDashboard size={16}/> Rincian Subtes</h4>
                   </div>
-                  <div className="divide-y divide-slate-100">
+                  <div className="divide-y divide-slate-100 text-sm">
                       {SUBTESTS.map((s) => {
                           const score = scores[s.id] || 0;
                           const correct = correctCounts[s.id] || 0;
@@ -930,19 +601,17 @@ const UTBKStudentApp = () => {
                           let colorClass = accuracy >= 50 ? "bg-blue-500" : "bg-red-500";
                           
                           return (
-                              <div key={s.id} className="p-5 hover:bg-slate-50 transition">
-                                  <div className="flex justify-between items-center">
-                                      <div className="flex items-center gap-4">
-                                          <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm text-white ${colorClass}`}>{accuracy}%</div>
-                                          <div>
-                                              <h5 className="font-bold text-slate-800 text-sm">{s.name}</h5>
-                                              <span className="text-xs text-slate-500">Benar: <strong>{correct}</strong>/{s.questions}</span>
-                                          </div>
+                              <div key={s.id} className="p-4 hover:bg-slate-50 transition flex justify-between items-center">
+                                  <div className="flex items-center gap-3">
+                                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs text-white ${colorClass}`}>{accuracy}%</div>
+                                      <div>
+                                          <h5 className="font-bold text-slate-800 text-xs md:text-sm">{s.name}</h5>
+                                          <span className="text-[10px] text-slate-500">Benar: <strong>{correct}</strong>/{s.questions}</span>
                                       </div>
-                                      <div className="text-right">
-                                          <span className="block text-[10px] uppercase font-bold text-slate-400">Skor</span>
-                                          <span className="text-xl font-black text-slate-800">{score}</span>
-                                      </div>
+                                  </div>
+                                  <div className="text-right">
+                                      <span className="block text-[10px] uppercase font-bold text-slate-400">Skor</span>
+                                      <span className="text-base font-black text-slate-800">{score}</span>
                                   </div>
                               </div>
                           )
@@ -953,24 +622,256 @@ const UTBKStudentApp = () => {
       );
   };
 
+  // --- FINISH EXAM ---
+  useEffect(() => {
+    if (screen === 'result' && currentTokenCode) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setSecurityActive(false); 
+
+        const finishExamProcess = async () => {
+            const { totalScore, details } = calculateScore();
+            const totalAllocatedMS = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0) * 60 * 1000;
+            const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
+            const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
+
+            try {
+                const tokenRef = doc(db, 'tokens', currentTokenCode);
+                await updateDoc(tokenRef, { 
+                    status: 'used',
+                    score: totalScore,
+                    scoreDetails: details,
+                    finalTimeLeft: globalTimeLeftSeconds,
+                    finishedAt: new Date().toISOString(),
+                    violation: violationReason || null,
+                    answers: answers,
+                    historyQuestions: questionOrder 
+                });
+                localStorage.removeItem(`answers_${currentTokenCode}`);
+                
+                // Fetch Leaderboard
+                const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
+                const querySnapshot = await getDocs(q);
+                const top10 = [];
+                let rank = 1; let userRank = null;
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    top10.push({ rank, name: data.studentName, school: data.studentSchool||'-', score: data.score, details: data.scoreDetails||{} });
+                    if (data.tokenCode === currentTokenCode) userRank = rank;
+                    rank++;
+                });
+                setLeaderboard(top10);
+                setMyRank(userRank);
+            } catch (error) { console.error("Save Error:", error); }
+        };
+        
+        if (globalStartTime) {
+            finishExamProcess();
+        } else {
+             // Load leaderboard only (Re-login)
+             const loadLeaderboardOnly = async () => {
+                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
+                 const snap = await getDocs(q);
+                 const top10 = [];
+                 let rank = 1; let userRank = null;
+                 snap.forEach(d => {
+                     const dt = d.data();
+                     top10.push({ rank, name: dt.studentName, school: dt.studentSchool||'-', score: dt.score, details: dt.scoreDetails||{} });
+                     if (dt.tokenCode === currentTokenCode) userRank = rank;
+                     rank++;
+                 });
+                 setLeaderboard(top10);
+                 setMyRank(userRank);
+             }
+             loadLeaderboardOnly();
+        }
+    }
+  }, [screen]);
+
+  // --- TOKEN LOGIN ---
+  const handleTokenLogin = async () => {
+    if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
+    const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
+    const docRef = doc(db, 'tokens', tokenCode);
+    
+    try {
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) { alert('Token TIDAK DITEMUKAN.'); return; }
+      
+      const data = docSnap.data();
+      const createdTime = new Date(data.createdAt).getTime();
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      const sixtyDays = 60 * 24 * 60 * 60 * 1000;
+
+      if (data.status === 'used') {
+          if ((now - createdTime) > sixtyDays) { alert(`Token kadaluarsa.`); return; }
+          localStorage.setItem('utbk_student_token', tokenCode);
+          setStudentName(data.studentName);
+          setCurrentTokenCode(tokenCode);
+          setAnswers(data.answers || {});
+          if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
+          if (testOrder.length === 0) setTestOrder(SUBTESTS); 
+          setScreen('result');
+          return;
+      }
+
+      if ((now - createdTime) > oneDay) { alert('Token Expired (>24 Jam).'); return; }
+
+      if (confirm(`Login sebagai ${data.studentName}?`)) {
+        await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
+        localStorage.setItem('utbk_student_token', tokenCode);
+        setStudentName(data.studentName);
+        setCurrentTokenCode(tokenCode);
+        setViolationReason(null);
+        setSp1Data(null); 
+        await forceFullscreen();
+        setCountdownTime(5); 
+        setScreen('countdown'); 
+      }
+    } catch (error) { alert(`Error: ${error.message}`); }
+  };
+
+  // --- START TEST ---
+  const startTest = (bypass = false) => {
+    if (!bypass) return;
+    if (!globalStartTime) setGlobalStartTime(Date.now()); 
+
+    for (const s of SUBTESTS) { 
+      if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } 
+    }
+    
+    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
+    setTestOrder(shuffledSubtests);
+    
+    const qOrder = {};
+    shuffledSubtests.forEach((subtest) => {
+      const bank = [...(bankSoal[subtest.id] || [])];
+      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
+    });
+    setQuestionOrder(qOrder);
+    
+    setCurrentSubtestIndex(0); 
+    setCurrentQuestion(0); 
+    const saved = localStorage.getItem(`answers_${currentTokenCode}`);
+    if(saved) setAnswers(JSON.parse(saved));
+    else setAnswers({}); 
+    setDoubtful({}); 
+    
+    const durationSec = shuffledSubtests[0].time * 60;
+    const targetTime = Date.now() + (durationSec * 1000);
+    setEndTime(targetTime);
+    setTimeLeft(durationSec);
+    setSecurityActive(true);
+    setScreen('test');
+  };
+
+  // --- TIMER ---
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (screen === 'test' && endTime) {
+        timerRef.current = setInterval(() => {
+            const now = Date.now();
+            const delta = Math.floor((endTime - now) / 1000); 
+            if (delta <= 0) {
+                clearInterval(timerRef.current);
+                setTimeLeft(0);
+                if (currentSubtestIndex < testOrder.length - 1) { 
+                  setSecurityActive(false); setScreen('break'); setBreakTime(10); 
+                } 
+                else { setSecurityActive(false); setScreen('result'); }
+            } else { setTimeLeft(delta); }
+        }, 1000);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [screen, endTime, currentSubtestIndex, testOrder]);
+
+  // Countdown & Break
+  useEffect(() => { 
+      if (screen === 'countdown' && countdownTime > 0) { const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); return () => clearTimeout(t); } 
+      else if (screen === 'countdown' && countdownTime === 0) { startTest(true); } 
+  }, [countdownTime, screen]);
+
+  useEffect(() => { 
+      if (screen === 'break' && breakTime > 0) { const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); return () => clearTimeout(t); } 
+      else if (screen === 'break' && breakTime === 0) { 
+          const n = currentSubtestIndex + 1; 
+          setCurrentSubtestIndex(n); setCurrentQuestion(0); 
+          const durationSec = testOrder[n].time * 60; 
+          setEndTime(Date.now() + (durationSec * 1000));
+          setTimeLeft(durationSec);
+          setSecurityActive(true); 
+          setScreen('test'); 
+      } 
+  }, [breakTime, screen]);
+
+  useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
+  
+  const handleAnswer = (val, type) => { 
+      const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
+      setAnswers(prev => {
+          let newAnswers = { ...prev };
+          if (type === 'pilihan_majemuk') {
+              let current = newAnswers[k] || [];
+              if (current.includes(val)) current = current.filter(x => x !== val);
+              else current.push(val);
+              newAnswers[k] = current;
+          } else { newAnswers[k] = val; }
+          localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
+          return newAnswers;
+      });
+  };
+  
+  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
+  
+  const handleNextQuestion = () => {
+    if (currentQuestion < currentSubtest.questions - 1) { setCurrentQuestion(currentQuestion + 1); } 
+    else { 
+      if (currentSubtestIndex < testOrder.length - 1) { setSecurityActive(false); setScreen('break'); setBreakTime(10); } 
+      else { setSecurityActive(false); setScreen('result'); } 
+    }
+  };
+
+  const FooterLiezira = () => (
+    <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
+      <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1"><Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span></p>
+    </div>
+  );
+
   // --- SCREENS RENDER ---
+
+  // 0. SCREEN: LANDSCAPE WARNING (HP Only)
+  if (isLandscapeMobile) {
+    return (
+      <div className="fixed inset-0 z-[10000] bg-black flex flex-col items-center justify-center text-white p-6 text-center select-none">
+        <div className="animate-bounce mb-4 text-4xl">📱 ➔ 📲</div>
+        <h2 className="text-xl font-bold mb-2 uppercase tracking-widest text-red-500">Orientasi Terkunci</h2>
+        <p className="text-sm text-gray-400 leading-relaxed max-w-xs">
+          Mode Landscape dimatikan untuk Smartphone.<br/>
+          Silakan putar kembali perangkat Anda ke posisi <b>Portrait (Tegak)</b> untuk melanjutkan ujian.
+        </p>
+      </div>
+    );
+  }
 
   // 1. SCREEN: COUNTDOWN
   if (screen === 'countdown') {
     return (
-      <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
+      <div 
+        className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none"
+        onContextMenu={(e) => e.preventDefault()} // MATIKAN KLIK KANAN
+      >
         <div className="mb-8 animate-pulse"><Timer size={64} /></div>
         <h2 className="text-2xl font-bold mb-4 uppercase tracking-widest">Persiapan Ujian</h2>
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
         <p className="text-indigo-200 text-sm max-w-md text-center px-4">Pastikan posisi nyaman. Dilarang keluar fullscreen.</p>
-        <div className="mt-8 bg-red-900/50 border-2 border-red-400 rounded-xl p-4 max-w-md">
+        <div className="mt-8 bg-red-900/50 border-2 border-red-400 rounded-xl p-4 max-w-md mx-4">
           <p className="text-red-200 text-xs font-bold flex items-center gap-2 mb-2">
             <Shield size={16}/> SISTEM KEAMANAN AKTIF
           </p>
-          <ul className="text-red-100 text-xs space-y-1">
+          <ul className="text-red-100 text-xs space-y-1 text-left">
             <li>• Pelanggaran 1: Surat Peringatan 1 (SP1)</li>
             <li>• Pelanggaran 2: <b>DISKUALIFIKASI</b> (Auto Submit)</li>
-            <li>• Screenshot, Split Screen, DevTools, Pindah Tab terdeteksi</li>
+            <li>• Klik Kanan, Screenshot, Split Screen DIBLOKIR</li>
           </ul>
         </div>
       </div>
@@ -980,7 +881,10 @@ const UTBKStudentApp = () => {
   // 2. SCREEN: LANDING
   if (screen === 'landing') {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto">
+      <div 
+        className="min-h-screen w-full bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 overflow-y-auto"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full relative text-center my-8">
           <div className="absolute top-0 left-0 w-full h-2 bg-indigo-600"></div>
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
@@ -995,7 +899,7 @@ const UTBKStudentApp = () => {
               <li>✓ Real-time Screenshot Detection</li>
               <li>✓ DevTools Auto-Block</li>
               <li>✓ Split Screen & Tab Switch Monitor</li>
-              <li>✓ Copy/Paste Disabled</li>
+              <li>✓ Copy/Paste & Right Click Disabled</li>
               <li className="text-red-600 font-black">⚠️ 2x VIOLATION = DISKUALIFIKASI</li>
             </ul>
           </div>
@@ -1028,7 +932,10 @@ const UTBKStudentApp = () => {
   // 3. SCREEN: BREAK
   if (screen === 'break') {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-indigo-50 to-white flex flex-col items-center justify-center p-4 select-none">
+      <div 
+        className="min-h-screen w-full bg-gradient-to-br from-indigo-50 to-white flex flex-col items-center justify-center p-4 select-none"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <div className="relative flex items-center justify-center mb-8">
           <div className="absolute w-64 h-64 rounded-full border-4 border-indigo-100"></div>
           <div className="absolute w-60 h-60 rounded-full border-8 border-indigo-500 animate-pulse opacity-20"></div>
@@ -1047,7 +954,10 @@ const UTBKStudentApp = () => {
   // 4. SCREEN: RESULT
   if (screen === 'result') {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 md:p-8 flex justify-center items-center select-none overflow-y-auto">
+      <div 
+        className="min-h-screen bg-gray-50 p-4 md:p-8 flex justify-center items-center select-none overflow-y-auto"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <div className="bg-white p-4 md:p-8 rounded-xl shadow-2xl max-w-[95%] w-full text-center my-8">
           <h1 className="text-3xl font-bold mb-2 text-indigo-900 hidden">Hasil Ujian</h1>
           <h2 className="text-xl text-gray-600 mb-4 font-medium">{studentName}</h2>
@@ -1164,50 +1074,54 @@ const UTBKStudentApp = () => {
   const qType = currentQ.type || 'pilihan_ganda'; 
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 select-none pb-10" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
+    <div 
+      className="min-h-screen w-full bg-gray-50 select-none pb-10" 
+      style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+      onContextMenu={(e) => e.preventDefault()} // MATIKAN KLIK KANAN (HARD BLOCK)
+    >
       
       {/* --- INTEGRASI SECURITY --- */}
-      {/* 1. Monitor: Selalu aktif di background */}
       <AdvancedSecurityMonitor 
-        isActive={securityActive && !sp1Data} // Pause saat Modal SP1 muncul
+        isActive={securityActive && !sp1Data} 
         tokenCode={currentTokenCode}
-        onForceSubmit={forceSubmitExam} // Callback SP2 (Auto Submit)
-        onWarning={handleSecurityWarning} // Callback SP1 (Warning)
+        onForceSubmit={forceSubmitExam} 
+        onWarning={handleSecurityWarning} 
       />
       
-      {/* 2. Modal SP1: Muncul jika sp1Data tidak null */}
       {sp1Data && <SP1Modal data={sp1Data} onClose={closeSP1} />}
 
-      {/* HEADER */}
-      <div className="sticky top-0 z-40 bg-indigo-700 text-white p-4 shadow-lg">
-        <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div>
-            <h2 className="text-xl font-bold">{currentSubtest.name}</h2>
-            <p className="text-sm text-indigo-200">
-              Soal {currentQuestion + 1} / {currentSubtest.questions}
+      {/* HEADER BARU (TANPA BADGE PROTECTED) */}
+      <div className="sticky top-0 z-40 bg-indigo-700 text-white shadow-lg transition-all duration-300">
+        <div className="max-w-6xl mx-auto p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+          
+          <div className="text-center md:text-left w-full md:w-auto">
+            <h2 className="text-lg md:text-xl font-bold leading-tight">{currentSubtest.name}</h2>
+            <p className="text-xs md:text-sm text-indigo-200 mt-1">
+              Soal {currentQuestion + 1} <span className="mx-1">/</span> {currentSubtest.questions}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-indigo-800 px-4 py-2 rounded-lg">
-              <Shield size={18} className="text-green-400"/>
-              <span className="text-xs font-bold">PROTECTED</span>
-            </div>
-            <div className="flex items-center gap-3 bg-indigo-800 px-6 py-3 rounded-lg">
-              <Clock size={24} />
-              <span className="text-2xl font-bold">{formatTime(timeLeft)}</span>
+
+          {/* Timer Only - Centered/Bottom on Mobile, Right on Desktop */}
+          <div className="flex items-center justify-center w-full md:w-auto">
+            <div className="flex items-center gap-2 bg-indigo-900 px-6 py-2 rounded-lg border border-indigo-500/30 w-full md:w-auto justify-center shadow-inner">
+              <Clock size={20} className="md:w-6 md:h-6 text-yellow-400" />
+              <span className="text-xl md:text-2xl font-bold font-mono tracking-widest text-white">
+                {formatTime(timeLeft)}
+              </span>
             </div>
           </div>
+
         </div>
       </div>
 
-      {/* CONTENT */}
-      <div className="max-w-6xl mx-auto p-6">
+      {/* CONTENT (Padding Bottom ditambah agar scroll HP aman) */}
+      <div className="max-w-6xl mx-auto p-4 md:p-6 pb-24 md:pb-10">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* NAVIGATION */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow p-4 sticky top-24">
               <h3 className="font-semibold text-gray-700 mb-3">Navigasi</h3>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-2 md:grid-cols-5 lg:grid-cols-5">
                 {Array.from({ length: currentSubtest.questions }).map((_, idx) => { 
                   const qKey = `${currentSubtest.id}_${idx}`; 
                   const isAnswered = answers[qKey] && (Array.isArray(answers[qKey]) ? answers[qKey].length > 0 : true); 
@@ -1215,12 +1129,12 @@ const UTBKStudentApp = () => {
                     <button 
                       key={idx} 
                       onClick={() => setCurrentQuestion(idx)} 
-                      className={`w-10 h-10 rounded font-semibold ${
+                      className={`w-full h-9 md:h-10 rounded-lg text-xs md:text-sm font-bold transition-all transform active:scale-95 ${
                         idx === currentQuestion 
-                          ? 'bg-indigo-600 text-white' 
+                          ? 'bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-300' 
                           : isAnswered 
                             ? (doubtful[qKey] ? 'bg-yellow-400 text-white' : 'bg-green-500 text-white') 
-                            : 'bg-gray-200'
+                            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
                       }`}
                     >
                       {idx + 1}
@@ -1247,13 +1161,7 @@ const UTBKStudentApp = () => {
                 </div>
                 {currentQ?.image && (
                   <div className="flex justify-center my-6">
-                    <img 
-                      src={currentQ.image} 
-                      alt="Soal Visual" 
-                      className="w-full h-auto my-6 select-none object-contain" 
-                      onContextMenu={e=>e.preventDefault()} 
-                      draggable="false"
-                    />
+                    <img src={currentQ.image} alt="Soal Visual" className="w-full h-auto my-6 select-none object-contain" onContextMenu={e=>e.preventDefault()} draggable="false" />
                   </div>
                 )}
               </div>
@@ -1261,46 +1169,17 @@ const UTBKStudentApp = () => {
               <div className="mb-8">
                   {qType === 'isian' ? (
                       <div className="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300">
-                        <label className="block text-sm font-bold text-gray-600 mb-2">
-                          Jawaban Singkat (Angka/Kata):
-                        </label>
-                        <input 
-                          type="text" 
-                          value={answers[key] || ''} 
-                          onChange={(e) => handleAnswer(e.target.value, 'isian')} 
-                          className="w-full p-4 text-xl font-mono border-2 border-indigo-200 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 outline-none transition" 
-                          placeholder="Ketik jawaban kamu di sini..." 
-                        />
+                        <label className="block text-sm font-bold text-gray-600 mb-2">Jawaban Singkat (Angka/Kata):</label>
+                        <input type="text" value={answers[key] || ''} onChange={(e) => handleAnswer(e.target.value, 'isian')} className="w-full p-4 text-xl font-mono border-2 border-indigo-200 rounded-lg focus:ring-4 focus:ring-indigo-100 focus:border-indigo-600 outline-none transition" placeholder="Ketik jawaban kamu di sini..." />
                       </div>
                   ) : (
                       <div className="space-y-3">
                         {['A', 'B', 'C', 'D', 'E'].map((l, idx) => {
-                            const isSelected = qType === 'pilihan_majemuk' 
-                              ? (answers[key] || []).includes(l) 
-                              : answers[key] === l;
+                            const isSelected = qType === 'pilihan_majemuk' ? (answers[key] || []).includes(l) : answers[key] === l;
                             return (
-                              <button 
-                                key={l} 
-                                onClick={() => handleAnswer(l, qType)} 
-                                className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 transition ${
-                                  isSelected 
-                                    ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' 
-                                    : 'border-gray-200 hover:bg-gray-50'
-                                }`}
-                              >
-                                <div className={`w-8 h-8 flex items-center justify-center font-bold rounded transition ${
-                                  isSelected 
-                                    ? 'bg-indigo-600 text-white' 
-                                    : 'bg-indigo-100 text-indigo-700'
-                                }`}>
-                                  {qType === 'pilihan_majemuk' 
-                                    ? (isSelected ? <CheckSquare size={18}/> : <span className="w-4 h-4 border-2 border-indigo-400 rounded-sm"></span>) 
-                                    : l
-                                  }
-                                </div>
-                                <span className="flex-1 font-medium text-gray-700">
-                                  <Latex>{currentQ?.options[idx] || ''}</Latex>
-                                </span>
+                              <button key={l} onClick={() => handleAnswer(l, qType)} className={`w-full text-left p-4 rounded-lg border-2 flex items-center gap-3 transition ${isSelected ? 'border-indigo-600 bg-indigo-50 ring-1 ring-indigo-600' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                <div className={`w-8 h-8 flex items-center justify-center font-bold rounded transition ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>{qType === 'pilihan_majemuk' ? (isSelected ? <CheckSquare size={18}/> : <span className="w-4 h-4 border-2 border-indigo-400 rounded-sm"></span>) : l}</div>
+                                <span className="flex-1 font-medium text-gray-700"><Latex>{currentQ?.options[idx] || ''}</Latex></span>
                               </button>
                             );
                         })}
@@ -1309,32 +1188,13 @@ const UTBKStudentApp = () => {
               </div>
 
               <div className="flex items-center gap-3 mb-6">
-                <input 
-                  type="checkbox" 
-                  id="doubt" 
-                  checked={doubtful[key]||false} 
-                  onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} 
-                  className="w-5 h-5 cursor-pointer" 
-                />
-                <label htmlFor="doubt" className="cursor-pointer font-medium text-gray-600">
-                  Ragu-ragu
-                </label>
+                <input type="checkbox" id="doubt" checked={doubtful[key]||false} onChange={()=>setDoubtful(p=>({...p,[key]:!p[key]}))} className="w-5 h-5 cursor-pointer" />
+                <label htmlFor="doubt" className="cursor-pointer font-medium text-gray-600">Ragu-ragu</label>
               </div>
               
               <div className="flex gap-3">
-                <button 
-                  onClick={() => setCurrentQuestion(currentQuestion - 1)} 
-                  disabled={currentQuestion === 0} 
-                  className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300"
-                >
-                  Kembali
-                </button>
-                <button 
-                  onClick={handleNextQuestion} 
-                  className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700"
-                >
-                  Selanjutnya
-                </button>
+                <button onClick={() => setCurrentQuestion(currentQuestion - 1)} disabled={currentQuestion === 0} className="px-6 py-3 bg-gray-500 text-white rounded-lg font-semibold disabled:bg-gray-300">Kembali</button>
+                <button onClick={handleNextQuestion} className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700">Selanjutnya</button>
               </div>
             </div>
           </div>
