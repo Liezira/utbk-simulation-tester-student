@@ -88,7 +88,6 @@ const AdvancedSecurityMonitor = ({
 
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-  // 1. DETEKSI PERUBAHAN UKURAN WINDOW (SCREENSHOT DETECTION)
   useEffect(() => {
     if (!isActive) return;
 
@@ -108,7 +107,6 @@ const AdvancedSecurityMonitor = ({
     };
   }, [isActive]);
 
-  // 2. DETEKSI DEVTOOLS TERBUKA (FIX FOR IOS)
   useEffect(() => {
     if (!isActive || !SECURITY_CONFIG.DEVTOOLS_BLOCKED) return;
 
@@ -129,7 +127,6 @@ const AdvancedSecurityMonitor = ({
     };
   }, [isActive]);
 
-  // 3. DETEKSI WINDOW BLUR
   useEffect(() => {
     if (!isActive) return;
 
@@ -141,7 +138,6 @@ const AdvancedSecurityMonitor = ({
     return () => window.removeEventListener('blur', handleBlur);
   }, [isActive]);
 
-  // 4. DETEKSI VISIBILITY CHANGE
   useEffect(() => {
     if (!isActive) return;
 
@@ -155,7 +151,6 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isActive]);
 
-  // 5. DETEKSI FULLSCREEN EXIT (DISABLED FOR IOS)
   useEffect(() => {
     if (!isActive) return;
 
@@ -176,7 +171,6 @@ const AdvancedSecurityMonitor = ({
     };
   }, [isActive]);
 
-  // 6. BLOKIR COPY
   useEffect(() => {
     if (!isActive || !SECURITY_CONFIG.COPY_BLOCKED) return;
 
@@ -190,7 +184,6 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('copy', handleCopy);
   }, [isActive]);
 
-  // 7. BLOKIR PASTE
   useEffect(() => {
     if (!isActive || !SECURITY_CONFIG.PASTE_BLOCKED) return;
 
@@ -204,7 +197,6 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('paste', handlePaste);
   }, [isActive]);
 
-  // 8. BLOKIR KLIK KANAN
   useEffect(() => {
     if (!isActive || !SECURITY_CONFIG.RIGHT_CLICK_BLOCKED) return;
 
@@ -218,7 +210,6 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('contextmenu', handleContextMenu);
   }, [isActive]);
 
-  // 9. BLOKIR KEYBOARD SHORTCUTS BERBAHAYA
   useEffect(() => {
     if (!isActive) return;
 
@@ -243,7 +234,6 @@ const AdvancedSecurityMonitor = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isActive]);
 
-  // 10. DETEKSI MOUSE LEAVE
   useEffect(() => {
     if (!isActive) return;
 
@@ -255,7 +245,6 @@ const AdvancedSecurityMonitor = ({
     return () => document.removeEventListener('mouseleave', handleMouseLeave);
   }, [isActive]);
 
-  // HANDLER VIOLATION
   const handleViolation = async (type, message) => {
     setViolations(prev => {
       const newViolations = { ...prev, [type]: prev[type] + 1 };
@@ -291,7 +280,7 @@ const AdvancedSecurityMonitor = ({
   return null;
 };
 
-// --- FOOTER COMPONENT (MISSING!) ---
+// ========== MISSING COMPONENT: FooterLiezira ==========
 const FooterLiezira = () => (
   <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
     <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
@@ -327,7 +316,9 @@ const UTBKStudentApp = () => {
 
   const timerRef = useRef(null);
 
-  // --- FORCE FULLSCREEN HELPER (FIXED FOR IOS) ---
+  // ========== MISSING FUNCTION: formatTime ==========
+  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
+
   const forceFullscreen = async () => {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     if (isIOS) return; 
@@ -341,7 +332,6 @@ const UTBKStudentApp = () => {
     }
   };
 
-  // --- HANDLE SECURITY VIOLATION ---
   const handleSecurityViolation = (type, message, totalCount) => {
     console.warn(`Security Violation [${type}]:`, message, 'Total:', totalCount);
     
@@ -351,7 +341,6 @@ const UTBKStudentApp = () => {
     }
   };
 
-  // --- FORCE SUBMIT EXAM ---
   const forceSubmitExam = (reason) => {
     setViolationReason(reason);
     setSecurityActive(false);
@@ -361,10 +350,6 @@ const UTBKStudentApp = () => {
     setScreen('result');
   };
 
-  // --- FORMAT TIME HELPER (MISSING!) ---
-  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
-
-  // --- SESSION RESTORE ---
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -412,7 +397,6 @@ const UTBKStudentApp = () => {
     restoreSession();
   }, []);
 
-  // --- APP CHECK ---
   useEffect(() => {
     const initAppCheck = async () => {
         try {
@@ -429,7 +413,6 @@ const UTBKStudentApp = () => {
     initAppCheck();
   }, []);
 
-  // --- LOAD SOAL ---
   useEffect(() => {
     const loadBankSoal = async () => {
       const loaded = {};
@@ -446,7 +429,6 @@ const UTBKStudentApp = () => {
     loadBankSoal();
   }, []);
 
-  // --- IRT CALCULATION ---
   const calculateScore = () => { 
     const details = {}; 
     const correctCounts = {};
@@ -523,7 +505,7 @@ const UTBKStudentApp = () => {
     }; 
   };
 
-  // --- FINISH EXAM & LEADERBOARD (MISSING!) ---
+  // ========== MISSING USEEFFECT: Finish Exam & Leaderboard ==========
   useEffect(() => {
     if (screen === 'result' && currentTokenCode) {
         if (timerRef.current) clearInterval(timerRef.current);
@@ -605,7 +587,7 @@ const UTBKStudentApp = () => {
     }
   }, [screen]);
 
-  // --- TOKEN LOGIN (MISSING!) ---
+  // ========== MISSING FUNCTION: handleTokenLogin ==========
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
     const tokenCode = inputToken.trim().toUpperCase();
@@ -657,7 +639,7 @@ const UTBKStudentApp = () => {
     }
   };
 
-  // --- START TEST (MISSING!) ---
+  // ========== MISSING FUNCTION: startTest ==========
   const startTest = (bypass = false) => {
     if (!bypass) return;
     if (!globalStartTime) setGlobalStartTime(Date.now()); 
@@ -697,7 +679,7 @@ const UTBKStudentApp = () => {
     setScreen('test');
   };
 
-  // --- TIMING LOGIC (MISSING!) ---
+  // ========== MISSING USEEFFECT: Timer Logic ==========
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (screen === 'test' && endTime) {
@@ -753,7 +735,7 @@ const UTBKStudentApp = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' }); 
   }, [currentQuestion, currentSubtestIndex, screen]);
 
-  // --- HANDLE ANSWER (MISSING!) ---
+  // ========== MISSING FUNCTION: handleAnswer ==========
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
       
@@ -773,7 +755,7 @@ const UTBKStudentApp = () => {
       });
   };
 
-  // --- HANDLE NEXT QUESTION (MISSING!) ---
+  // ========== MISSING FUNCTION: handleNextQuestion ==========
   const handleNextQuestion = () => {
     if (currentQuestion < testOrder[currentSubtestIndex].questions - 1) { 
       setCurrentQuestion(currentQuestion + 1); 
@@ -790,7 +772,6 @@ const UTBKStudentApp = () => {
     }
   };
 
-  // --- ANALYSIS DASHBOARD ---
   const AnalysisDashboard = () => {
       const { scores, totalScore, correctCounts } = calculateScore();
       
@@ -1023,7 +1004,6 @@ const UTBKStudentApp = () => {
       );
   };
 
-  // --- SCREENS ---
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
@@ -1258,7 +1238,6 @@ const UTBKStudentApp = () => {
     );
   }
   
-  // --- TEST SCREEN ---
   const currentSubtest = testOrder[currentSubtestIndex];
   if (!currentSubtest || !questionOrder[currentSubtest.id]) {
     return (
