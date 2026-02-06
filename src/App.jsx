@@ -303,44 +303,6 @@ const AdvancedSecurityMonitor = ({
 
   return null; // Tidak render UI, hanya monitoring
 };
-// --- WATERMARK COMPONENT ---
-const SecurityWatermark = ({ studentName, tokenCode }) => {
-  const watermarkText = `${studentName} • ${tokenCode} • ${new Date().toLocaleString('id-ID')}`;
-  
-  return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '100vw',
-      height: '100vh',
-      pointerEvents: 'none',
-      zIndex: 9998,
-      opacity: 0.08,
-      display: 'flex',
-      flexWrap: 'wrap',
-      justifyContent: 'space-around',
-      alignItems: 'center',
-      overflow: 'hidden',
-    }}>
-      {Array(30).fill(watermarkText).map((text, i) => (
-        <span
-          key={i}
-          style={{
-            transform: 'rotate(-45deg)',
-            fontSize: '16px',
-            fontWeight: 'bold',
-            color: '#000',
-            margin: '40px',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {text}
-        </span>
-      ))}
-    </div>
-  );
-};
 
 // --- MAIN APP COMPONENT ---
 const UTBKStudentApp = () => {
@@ -813,7 +775,6 @@ const UTBKStudentApp = () => {
           <ul className="text-red-100 text-xs space-y-1">
             <li>• Max {SECURITY_CONFIG.MAX_VIOLATIONS} pelanggaran = Auto Submit</li>
             <li>• Screenshot, Split Screen, DevTools terdeteksi</li>
-            <li>• Watermark aktif di setiap halaman</li>
           </ul>
         </div>
       </div>
@@ -839,7 +800,6 @@ const UTBKStudentApp = () => {
               <li>✓ Split Screen Monitor</li>
               <li>✓ Tab Switch Prevention</li>
               <li>✓ Copy/Paste Disabled</li>
-              <li>✓ Watermark Tracking</li>
               <li className="text-red-600 font-black">⚠️ MAX {SECURITY_CONFIG.MAX_VIOLATIONS} VIOLATIONS = DISKUALIFIKASI</li>
             </ul>
           </div>
@@ -1060,10 +1020,6 @@ const UTBKStudentApp = () => {
         studentName={studentName}
         tokenCode={currentTokenCode}
         onForceSubmit={forceSubmitExam}
-      />
-      <SecurityWatermark 
-        studentName={studentName}
-        tokenCode={currentTokenCode}
       />
 
       {/* HEADER */}
