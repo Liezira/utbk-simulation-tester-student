@@ -33,14 +33,14 @@ const SUBTESTS = [
 
 // --- SECURITY CONFIGURATION ---
 const SECURITY_CONFIG = {
-  MAX_VIOLATIONS: 2, // Maksimal pelanggaran sebelum auto-submit
-  MAX_BLUR_COUNT: 3, // Maksimal blur/unfocus
-  MAX_VISIBILITY_CHANGE: 2, // Maksimal pindah tab
-  SCREENSHOT_CHECK_INTERVAL: 2000, // Cek screenshot tiap 2 detik
-  PASTE_BLOCKED: true, // Blokir paste
-  COPY_BLOCKED: true, // Blokir copy
-  DEVTOOLS_BLOCKED: true, // Blokir DevTools
-  RIGHT_CLICK_BLOCKED: true, // Blokir klik kanan
+  MAX_VIOLATIONS: 2,
+  MAX_BLUR_COUNT: 3,
+  MAX_VISIBILITY_CHANGE: 2,
+  SCREENSHOT_CHECK_INTERVAL: 2000,
+  PASTE_BLOCKED: true,
+  COPY_BLOCKED: true,
+  DEVTOOLS_BLOCKED: true,
+  RIGHT_CLICK_BLOCKED: true,
 };
 
 // --- IRT HELPER FUNCTIONS ---
@@ -86,7 +86,6 @@ const AdvancedSecurityMonitor = ({
   const screenshotCheckRef = useRef(null);
   const devtoolsCheckRef = useRef(null);
 
-  // Helper: Deteksi iOS (iPhone/iPad)
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
   // 1. DETEKSI PERUBAHAN UKURAN WINDOW (SCREENSHOT DETECTION)
@@ -97,7 +96,6 @@ const AdvancedSecurityMonitor = ({
       const currentTime = Date.now();
       const timeSinceLastActivity = currentTime - lastActivityRef.current;
 
-      // Cek apakah ada perubahan mendadak pada document visibility
       if (document.hidden && timeSinceLastActivity < 100) {
         handleViolation('screenshot', '⚠️ Terdeteksi aktivitas mencurigakan (kemungkinan screenshot)');
       }
@@ -117,9 +115,6 @@ const AdvancedSecurityMonitor = ({
     const detectDevTools = () => {
       const threshold = 160; 
       const widthThreshold = window.outerWidth - window.innerWidth > threshold;
-      
-      // FIX IOS: Abaikan cek tinggi di iOS karena Address Bar Safari memakan tempat
-      // Di Android/PC tetap dicek
       const heightThreshold = isIOS ? false : (window.outerHeight - window.innerHeight > threshold);
       
       if (widthThreshold || heightThreshold) {
@@ -134,7 +129,7 @@ const AdvancedSecurityMonitor = ({
     };
   }, [isActive]);
 
-  // 3. DETEKSI WINDOW BLUR (Pindah aplikasi/split screen)
+  // 3. DETEKSI WINDOW BLUR
   useEffect(() => {
     if (!isActive) return;
 
@@ -146,7 +141,7 @@ const AdvancedSecurityMonitor = ({
     return () => window.removeEventListener('blur', handleBlur);
   }, [isActive]);
 
-  // 4. DETEKSI VISIBILITY CHANGE (Pindah tab/minimize)
+  // 4. DETEKSI VISIBILITY CHANGE
   useEffect(() => {
     if (!isActive) return;
 
@@ -165,7 +160,6 @@ const AdvancedSecurityMonitor = ({
     if (!isActive) return;
 
     const handleFullscreenChange = () => {
-      // FIX IOS: iPhone tidak support Fullscreen API standar, jadi kita skip cek ini di iOS
       if (isIOS) return; 
 
       if (!document.fullscreenElement) {
@@ -174,7 +168,6 @@ const AdvancedSecurityMonitor = ({
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    // Tambahan event listener untuk browser lain (webkit)
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     
     return () => {
@@ -230,16 +223,15 @@ const AdvancedSecurityMonitor = ({
     if (!isActive) return;
 
     const handleKeyDown = (e) => {
-      // F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U, Ctrl+Shift+C
       if (
         e.key === 'F12' ||
         (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) ||
         (e.ctrlKey && e.shiftKey && (e.key === 'J' || e.key === 'j')) ||
         (e.ctrlKey && e.shiftKey && (e.key === 'C' || e.key === 'c')) ||
         (e.ctrlKey && (e.key === 'U' || e.key === 'u')) ||
-        (e.ctrlKey && (e.key === 'S' || e.key === 's')) || // Save
+        (e.ctrlKey && (e.key === 'S' || e.key === 's')) ||
         e.key === 'PrintScreen' ||
-        (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4')) // Mac screenshot
+        (e.metaKey && e.shiftKey && (e.key === '3' || e.key === '4'))
       ) {
         e.preventDefault();
         handleViolation('devtools', '🚫 Shortcut keyboard terdeteksi dan diblokir!');
@@ -269,13 +261,9 @@ const AdvancedSecurityMonitor = ({
       const newViolations = { ...prev, [type]: prev[type] + 1 };
       const totalViolations = Object.values(newViolations).reduce((a, b) => a + b, 0);
 
-      // Log ke Firebase
       logViolationToFirebase(type, message, totalViolations);
-
-      // Trigger callback ke parent
       onViolation(type, message, totalViolations);
 
-      // Auto-submit jika melebihi batas
       if (totalViolations >= SECURITY_CONFIG.MAX_VIOLATIONS) {
         onForceSubmit(`DISKUALIFIKASI: Total ${totalViolations} pelanggaran terdeteksi.`);
       }
@@ -284,7 +272,6 @@ const AdvancedSecurityMonitor = ({
     });
   };
 
-  // LOG VIOLATION KE FIREBASE
   const logViolationToFirebase = async (type, message, totalCount) => {
     try {
       const docRef = doc(db, 'tokens', tokenCode);
@@ -301,8 +288,17 @@ const AdvancedSecurityMonitor = ({
     }
   };
 
-  return null; // Tidak render UI, hanya monitoring
+  return null;
 };
+
+// --- FOOTER COMPONENT (MISSING!) ---
+const FooterLiezira = () => (
+  <div className="mt-8 py-4 border-t border-gray-200 w-full text-center">
+    <p className="text-gray-400 text-xs font-mono flex items-center justify-center gap-1">
+      <Copyright size={12} /> {new Date().getFullYear()} Created by <span className="font-bold text-indigo-400">RuangSimulasi</span>
+    </p>
+  </div>
+);
 
 // --- MAIN APP COMPONENT ---
 const UTBKStudentApp = () => {
@@ -333,7 +329,6 @@ const UTBKStudentApp = () => {
 
   // --- FORCE FULLSCREEN HELPER (FIXED FOR IOS) ---
   const forceFullscreen = async () => {
-    // FIX: Deteksi iOS agar tidak memaksa fullscreen (karena Safari iOS tidak support Fullscreen API standar)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     if (isIOS) return; 
 
@@ -343,7 +338,6 @@ const UTBKStudentApp = () => {
       }
     } catch (err) {
       console.error('Fullscreen failed:', err);
-      // Alert dihapus agar tidak mengganggu jika browser menolak
     }
   };
 
@@ -351,7 +345,6 @@ const UTBKStudentApp = () => {
   const handleSecurityViolation = (type, message, totalCount) => {
     console.warn(`Security Violation [${type}]:`, message, 'Total:', totalCount);
     
-    // FIX: Jangan paksa fullscreen di iOS saat pelanggaran terjadi
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     if (type === 'fullscreen' && !isIOS) {
       forceFullscreen();
@@ -367,6 +360,9 @@ const UTBKStudentApp = () => {
     }
     setScreen('result');
   };
+
+  // --- FORMAT TIME HELPER (MISSING!) ---
+  const formatTime = (s) => `${Math.floor(s / 60).toString().padStart(2,'0')}:${(s % 60).toString().padStart(2,'0')}`;
 
   // --- SESSION RESTORE ---
   useEffect(() => {
@@ -525,6 +521,273 @@ const UTBKStudentApp = () => {
         scores: scoresForDashboard,
         correctCounts: correctCounts
     }; 
+  };
+
+  // --- FINISH EXAM & LEADERBOARD (MISSING!) ---
+  useEffect(() => {
+    if (screen === 'result' && currentTokenCode) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setSecurityActive(false);
+
+        const finishExamProcess = async () => {
+            const { totalScore, details } = calculateScore();
+            
+            const totalAllocatedMinutes = SUBTESTS.reduce((acc, curr) => acc + curr.time, 0);
+            const totalAllocatedMS = totalAllocatedMinutes * 60 * 1000;
+            
+            const usedTimeMS = globalStartTime ? (Date.now() - globalStartTime) : totalAllocatedMS;
+            const globalTimeLeftSeconds = Math.max(0, Math.floor((totalAllocatedMS - usedTimeMS) / 1000));
+
+            try {
+                const tokenRef = doc(db, 'tokens', currentTokenCode);
+                await updateDoc(tokenRef, { 
+                    status: 'used',
+                    score: totalScore,
+                    scoreDetails: details,
+                    finalTimeLeft: globalTimeLeftSeconds,
+                    finishedAt: new Date().toISOString(),
+                    violation: violationReason || null,
+                    answers: answers,
+                    historyQuestions: questionOrder 
+                });
+
+                localStorage.removeItem(`answers_${currentTokenCode}`);
+
+                const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), orderBy('finalTimeLeft', 'desc'), limit(10));
+                const querySnapshot = await getDocs(q);
+                const top10 = [];
+                let rank = 1; let userRank = null;
+
+                querySnapshot.forEach((doc) => {
+                    const data = doc.data();
+                    top10.push({ 
+                        rank, 
+                        name: data.studentName, 
+                        school: data.studentSchool || '-', 
+                        score: data.score, 
+                        details: data.scoreDetails || {},
+                        timeLeft: data.finalTimeLeft 
+                    });
+                    if (data.tokenCode === currentTokenCode) userRank = rank;
+                    rank++;
+                });
+                setLeaderboard(top10);
+                setMyRank(userRank);
+            } catch (error) { console.error("Leaderboard Error:", error); }
+        };
+        
+        if (globalStartTime) {
+            finishExamProcess();
+        } else {
+             const loadLeaderboardOnly = async () => {
+                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
+                 const snap = await getDocs(q);
+                 const top10 = [];
+                 let rank = 1; let userRank = null;
+                 snap.forEach(d => {
+                     const dt = d.data();
+                     top10.push({ 
+                         rank, 
+                         name: dt.studentName, 
+                         school: dt.studentSchool||'-', 
+                         score: dt.score, 
+                         details: dt.scoreDetails || {},
+                         timeLeft: dt.finalTimeLeft 
+                     });
+                     if (dt.tokenCode === currentTokenCode) userRank = rank;
+                     rank++;
+                 });
+                 setLeaderboard(top10);
+                 setMyRank(userRank);
+             }
+             loadLeaderboardOnly();
+        }
+    }
+  }, [screen]);
+
+  // --- TOKEN LOGIN (MISSING!) ---
+  const handleTokenLogin = async () => {
+    if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
+    const tokenCode = inputToken.trim().toUpperCase();
+    const docRef = doc(db, 'tokens', tokenCode);
+    
+    try {
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) { alert('Token TIDAK DITEMUKAN.'); return; }
+      
+      const data = docSnap.data();
+      const createdTime = new Date(data.createdAt).getTime();
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      const sixtyDays = 60 * 24 * 60 * 60 * 1000;
+
+      if (data.status === 'used') {
+          if ((now - createdTime) > sixtyDays) {
+              alert(`Maaf, Token ini sudah melewati batas penyimpanan 60 hari.`);
+              return;
+          }
+          localStorage.setItem('utbk_student_token', tokenCode);
+          setStudentName(data.studentName);
+          setCurrentTokenCode(tokenCode);
+          setAnswers(data.answers || {});
+          if (data.historyQuestions) setQuestionOrder(data.historyQuestions);
+          if (testOrder.length === 0) setTestOrder(SUBTESTS); 
+          setScreen('result');
+          return;
+      }
+
+      if ((now - createdTime) > oneDay) { 
+          alert('Token SUDAH KADALUARSA (Expired > 24 Jam).'); 
+          return; 
+      }
+
+      if (confirm(`Login sebagai ${data.studentName}?\n\n⚠️ PERINGATAN:\n- Ujian menggunakan sistem anti-cheat KETAT\n- Screenshot, split screen, pindah tab akan terdeteksi\n- Maksimal ${SECURITY_CONFIG.MAX_VIOLATIONS} pelanggaran sebelum auto-submit\n\nLanjutkan?`)) {
+        await forceFullscreen();
+        await updateDoc(docRef, { loginAt: new Date().toISOString() }); 
+        localStorage.setItem('utbk_student_token', tokenCode);
+        setStudentName(data.studentName);
+        setCurrentTokenCode(tokenCode);
+        setViolationReason(null);
+        setCountdownTime(5); 
+        setScreen('countdown'); 
+      }
+    } catch (error) { 
+      console.error(error); 
+      alert('Koneksi Error.'); 
+    }
+  };
+
+  // --- START TEST (MISSING!) ---
+  const startTest = (bypass = false) => {
+    if (!bypass) return;
+    if (!globalStartTime) setGlobalStartTime(Date.now()); 
+
+    for (const s of SUBTESTS) { 
+      if ((bankSoal[s.id]?.length || 0) < s.questions) { 
+        alert(`Soal ${s.name} belum siap.`); 
+        return; 
+      } 
+    }
+    
+    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
+    setTestOrder(shuffledSubtests);
+    
+    const qOrder = {};
+    shuffledSubtests.forEach((subtest) => {
+      const bank = [...(bankSoal[subtest.id] || [])];
+      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
+    });
+    setQuestionOrder(qOrder);
+    
+    setCurrentSubtestIndex(0); 
+    setCurrentQuestion(0); 
+    
+    const saved = localStorage.getItem(`answers_${currentTokenCode}`);
+    if(saved) setAnswers(JSON.parse(saved));
+    else setAnswers({}); 
+
+    setDoubtful({}); 
+    
+    const durationSec = shuffledSubtests[0].time * 60;
+    const targetTime = Date.now() + (durationSec * 1000);
+    setEndTime(targetTime);
+    setTimeLeft(durationSec);
+    
+    setSecurityActive(true);
+    setScreen('test');
+  };
+
+  // --- TIMING LOGIC (MISSING!) ---
+  useEffect(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (screen === 'test' && endTime) {
+        timerRef.current = setInterval(() => {
+            const now = Date.now();
+            const delta = Math.floor((endTime - now) / 1000); 
+            if (delta <= 0) {
+                clearInterval(timerRef.current);
+                setTimeLeft(0);
+                if (currentSubtestIndex < testOrder.length - 1) { 
+                  setSecurityActive(false);
+                  setScreen('break'); 
+                  setBreakTime(10); 
+                } 
+                else { 
+                  setSecurityActive(false);
+                  setScreen('result'); 
+                }
+            } else { setTimeLeft(delta); }
+        }, 1000);
+    }
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [screen, endTime, currentSubtestIndex, testOrder]);
+
+  useEffect(() => { 
+      if (screen === 'countdown' && countdownTime > 0) { 
+        const t = setTimeout(() => setCountdownTime(countdownTime - 1), 1000); 
+        return () => clearTimeout(t); 
+      } 
+      else if (screen === 'countdown' && countdownTime === 0) { 
+        startTest(true); 
+      } 
+  }, [countdownTime, screen]);
+
+  useEffect(() => { 
+      if (screen === 'break' && breakTime > 0) { 
+        const t = setTimeout(() => setBreakTime(breakTime - 1), 1000); 
+        return () => clearTimeout(t); 
+      } 
+      else if (screen === 'break' && breakTime === 0) { 
+          const n = currentSubtestIndex + 1; 
+          setCurrentSubtestIndex(n); 
+          setCurrentQuestion(0); 
+          const durationSec = testOrder[n].time * 60;
+          setEndTime(Date.now() + (durationSec * 1000));
+          setTimeLeft(durationSec);
+          setSecurityActive(true);
+          setScreen('test'); 
+      } 
+  }, [breakTime, screen]);
+
+  useEffect(() => { 
+    window.scrollTo({ top: 0, behavior: 'smooth' }); 
+  }, [currentQuestion, currentSubtestIndex, screen]);
+
+  // --- HANDLE ANSWER (MISSING!) ---
+  const handleAnswer = (val, type) => { 
+      const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
+      
+      setAnswers(prev => {
+          let newAnswers = { ...prev };
+          if (type === 'pilihan_majemuk') {
+              let current = newAnswers[k] || [];
+              if (current.includes(val)) current = current.filter(x => x !== val);
+              else current.push(val);
+              newAnswers[k] = current;
+          } else {
+              newAnswers[k] = val; 
+          }
+          
+          localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
+          return newAnswers;
+      });
+  };
+
+  // --- HANDLE NEXT QUESTION (MISSING!) ---
+  const handleNextQuestion = () => {
+    if (currentQuestion < testOrder[currentSubtestIndex].questions - 1) { 
+      setCurrentQuestion(currentQuestion + 1); 
+    } 
+    else { 
+      if (currentSubtestIndex < testOrder.length - 1) { 
+        setSecurityActive(false);
+        setScreen('break'); 
+        setBreakTime(10); 
+      } else { 
+        setSecurityActive(false);
+        setScreen('result'); 
+      } 
+    }
   };
 
   // --- ANALYSIS DASHBOARD ---
@@ -759,8 +1022,8 @@ const UTBKStudentApp = () => {
           </div>
       );
   };
-  // --- SCREENS ---
 
+  // --- SCREENS ---
   if (screen === 'countdown') {
     return (
       <div className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none">
@@ -789,7 +1052,6 @@ const UTBKStudentApp = () => {
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           
-          {/* SECURITY WARNING */}
           <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900">
               <ShieldAlert size={18}/>ADVANCED ANTI-CHEAT SYSTEM:
@@ -1013,7 +1275,6 @@ const UTBKStudentApp = () => {
 
   return (
     <div className="min-h-screen w-full bg-gray-50 select-none pb-10" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
-      {/* SECURITY COMPONENTS */}
       <AdvancedSecurityMonitor 
         onViolation={handleSecurityViolation}
         isActive={securityActive}
@@ -1022,7 +1283,6 @@ const UTBKStudentApp = () => {
         onForceSubmit={forceSubmitExam}
       />
 
-      {/* HEADER */}
       <div className="sticky top-0 z-40 bg-indigo-700 text-white p-4 shadow-lg">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
@@ -1044,10 +1304,8 @@ const UTBKStudentApp = () => {
         </div>
       </div>
 
-      {/* CONTENT */}
       <div className="max-w-6xl mx-auto p-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* NAVIGATION */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow p-4 sticky top-24">
               <h3 className="font-semibold text-gray-700 mb-3">Navigasi</h3>
@@ -1075,7 +1333,6 @@ const UTBKStudentApp = () => {
             </div>
           </div>
       
-          {/* QUESTION */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-lg shadow-lg p-6 min-h-[500px]">
               
