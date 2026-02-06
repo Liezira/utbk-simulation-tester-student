@@ -44,23 +44,6 @@ const getWeight = (difficultyLevel) => {
     switch (difficultyLevel) { case 3: return 2.0; case 2: return 1.5; default: return 1.0; }
 };
 
-// --- RECAPTCHA V3 HELPER (SIMPLIFIED - SILENT VERIFICATION) ---
-const executeRecaptcha = async (action) => {
-  try {
-    const siteKey = import.meta.env.VITE_RECAPTCHA;
-    if (!siteKey || !window.grecaptcha) return { success: true }; // Fallback jika tidak ada
-    
-    const token = await window.grecaptcha.execute(siteKey, { action });
-    
-    // Silent verification - hanya generate token untuk backend validation
-    // Backend akan verify via Firebase App Check + reCAPTCHA secara bersamaan
-    return { success: true, token };
-  } catch (error) {
-    console.warn('reCAPTCHA silent check failed:', error);
-    return { success: true }; // Don't block user, let App Check handle it
-  }
-};
-
 // --- ADVANCED SECURITY MONITOR (ANTI-SPLIT SCREEN V2 + iOS FIX) ---
 const AdvancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice }) => {
   const lastActivityRef = useRef(Date.now());
@@ -152,244 +135,6 @@ const AdvancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice })
   }, [isActive, onViolationDetected, isIOSDevice]);
 
   return null;
-};
-
-// --- ANTI KEYBOARD SHORTCUTS MONITOR ---
-const KeyboardSecurityMonitor = ({ isActive, onViolationDetected }) => {
-  useEffect(() => {
-    if (!isActive) return;
-
-    const blockKeyboardShortcuts = (e) => {
-      // Blokir Print Screen (Windows)
-      if (e.key === 'PrintScreen' || e.keyCode === 44) {
-        e.preventDefault();
-        onViolationDetected('printscreen', '🚫 Print Screen diblokir!');
-        return false;
-      }
-
-      // Blokir Win + PrtSc (Windows Screenshot)
-      if ((e.metaKey || e.key === 'Meta') && e.key === 'PrintScreen') {
-        e.preventDefault();
-        onViolationDetected('win_printscreen', '🚫 Windows Screenshot diblokir!');
-        return false;
-      }
-
-      // Blokir Cmd + Shift + 3/4/5 (macOS Screenshot)
-      if (e.metaKey && e.shiftKey && ['3', '4', '5'].includes(e.key)) {
-        e.preventDefault();
-        onViolationDetected('mac_screenshot', '🚫 macOS Screenshot diblokir!');
-        return false;
-      }
-
-      // Blokir F12 (DevTools)
-      if (e.keyCode === 123 || e.key === 'F12') {
-        e.preventDefault();
-        onViolationDetected('f12', '🚫 F12 diblokir!');
-        return false;
-      }
-
-      // Blokir Ctrl+Shift+I (Inspect)
-      if (e.ctrlKey && e.shiftKey && e.keyCode === 73) {
-        e.preventDefault();
-        onViolationDetected('ctrl_shift_i', '🚫 Inspect Element diblokir!');
-        return false;
-      }
-
-      // Blokir Ctrl+U (View Source)
-      if (e.ctrlKey && e.keyCode === 85) {
-        e.preventDefault();
-        onViolationDetected('ctrl_u', '🚫 View Source diblokir!');
-        return false;
-      }
-
-      // Blokir Ctrl+Shift+C (Inspect Mode)
-      if (e.ctrlKey && e.shiftKey && e.keyCode === 67) {
-        e.preventDefault();
-        onViolationDetected('ctrl_shift_c', '🚫 Inspect Mode diblokir!');
-        return false;
-      }
-
-      // Blokir Ctrl+Shift+J (Console)
-      if (e.ctrlKey && e.shiftKey && e.keyCode === 74) {
-        e.preventDefault();
-        onViolationDetected('ctrl_shift_j', '🚫 Console diblokir!');
-        return false;
-      }
-
-      // Deteksi Alt+Tab (Window Switching - hanya warning)
-      if (e.altKey && e.key === 'Tab') {
-        onViolationDetected('alt_tab', '⚠️ Alt+Tab terdeteksi!');
-      }
-    };
-
-    document.addEventListener('keydown', blockKeyboardShortcuts, true);
-    document.addEventListener('keyup', blockKeyboardShortcuts, true);
-
-    return () => {
-      document.removeEventListener('keydown', blockKeyboardShortcuts, true);
-      document.removeEventListener('keyup', blockKeyboardShortcuts, true);
-    };
-  }, [isActive, onViolationDetected]);
-
-  return null;
-};
-
-// --- CLIPBOARD MONITOR (Deteksi Screenshot via Clipboard) ---
-const ClipboardSecurityMonitor = ({ isActive, onViolationDetected }) => {
-  const lastClipboardCheck = useRef(Date.now());
-
-  useEffect(() => {
-    if (!isActive) return;
-
-    const checkClipboard = async () => {
-      try {
-        if (!navigator.clipboard) return;
-        
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          if (item.types.includes('image/png') || item.types.includes('image/jpeg')) {
-            const now = Date.now();
-            // Jika ada gambar di clipboard dalam 2 detik terakhir = kemungkinan screenshot
-            if (now - lastClipboardCheck.current < 2000) {
-              onViolationDetected('clipboard_image', '🚫 Screenshot terdeteksi di clipboard!');
-            }
-            lastClipboardCheck.current = now;
-          }
-        }
-      } catch (error) {
-        // Permission denied atau tidak support - abaikan
-      }
-    };
-
-    const interval = setInterval(checkClipboard, 1000);
-    return () => clearInterval(interval);
-  }, [isActive, onViolationDetected]);
-
-  return null;
-};
-
-// --- IDLE DETECTION MONITOR (Diubah jadi 60 detik) ---
-const IdleDetectionMonitor = ({ isActive, onViolationDetected, maxIdleSeconds = 60 }) => {
-  const lastActivityTime = useRef(Date.now());
-  const warningShown = useRef(false);
-
-  useEffect(() => {
-    if (!isActive) return;
-
-    const resetActivity = () => {
-      lastActivityTime.current = Date.now();
-      warningShown.current = false;
-    };
-
-    const checkIdle = () => {
-      const idleTime = (Date.now() - lastActivityTime.current) / 1000;
-      
-      if (idleTime > maxIdleSeconds && !warningShown.current) {
-        onViolationDetected('idle', `⚠️ Tidak ada aktivitas selama ${Math.floor(idleTime)} detik!`);
-        warningShown.current = true;
-      }
-    };
-
-    // Track user activity
-    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
-    events.forEach(event => document.addEventListener(event, resetActivity, true));
-
-    const idleInterval = setInterval(checkIdle, 5000);
-
-    return () => {
-      events.forEach(event => document.removeEventListener(event, resetActivity, true));
-      clearInterval(idleInterval);
-    };
-  }, [isActive, onViolationDetected, maxIdleSeconds]);
-
-  return null;
-};
-
-// --- BROWSER FINGERPRINT DETECTOR ---
-const BrowserFingerprintMonitor = ({ isActive, onViolationDetected }) => {
-  useEffect(() => {
-    if (!isActive) return;
-
-    const checkFingerprint = () => {
-      // Canvas Fingerprinting Detection
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.textBaseline = 'top';
-        ctx.font = '14px Arial';
-        ctx.fillText('UTBK Security Check', 2, 2);
-        const canvasData = canvas.toDataURL();
-        
-        // Simpan fingerprint pertama kali
-        const stored = sessionStorage.getItem('canvas_fp');
-        if (!stored) {
-          sessionStorage.setItem('canvas_fp', canvasData);
-        } else if (stored !== canvasData) {
-          // Canvas fingerprint berubah = kemungkinan fraud
-          onViolationDetected('fingerprint_change', '🚫 Browser fingerprint berubah!');
-        }
-      }
-
-      // Deteksi Automation Tools
-      if (navigator.webdriver) {
-        onViolationDetected('webdriver', '🚫 Automation tool terdeteksi!');
-      }
-
-      // Deteksi Headless Browser
-      if (!window.chrome || /HeadlessChrome/.test(navigator.userAgent)) {
-        onViolationDetected('headless', '🚫 Headless browser terdeteksi!');
-      }
-
-      // Deteksi Virtual Machine (heuristic)
-      const vmIndicators = [
-        navigator.hardwareConcurrency <= 2,
-        screen.width === 1024 && screen.height === 768,
-        !window.chrome?.runtime,
-      ];
-      if (vmIndicators.filter(Boolean).length >= 2) {
-        onViolationDetected('vm_suspected', '⚠️ Virtual machine dicurigai!');
-      }
-    };
-
-    checkFingerprint();
-  }, [isActive, onViolationDetected]);
-
-  return null;
-};
-
-// --- SCREENSHOT API DETECTOR ---
-const ScreenshotAPIMonitor = ({ isActive, onViolationDetected }) => {
-  useEffect(() => {
-    if (!isActive) return;
-
-    // Override getDisplayMedia API (Screen Capture API)
-    if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-      const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
-      navigator.mediaDevices.getDisplayMedia = function(...args) {
-        onViolationDetected('screen_capture_api', '🚫 Screen Capture API diblokir!');
-        return Promise.reject(new Error('Screen capture blocked'));
-      };
-
-      return () => {
-        navigator.mediaDevices.getDisplayMedia = originalGetDisplayMedia;
-      };
-    }
-  }, [isActive, onViolationDetected]);
-
-  return null;
-};
-
-// --- COMBINED ENHANCED SECURITY MONITOR ---
-const EnhancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice }) => {
-  return (
-    <>
-      <KeyboardSecurityMonitor isActive={isActive} onViolationDetected={onViolationDetected} />
-      <ClipboardSecurityMonitor isActive={isActive} onViolationDetected={onViolationDetected} />
-      <IdleDetectionMonitor isActive={isActive} onViolationDetected={onViolationDetected} maxIdleSeconds={60} />
-      <BrowserFingerprintMonitor isActive={isActive} onViolationDetected={onViolationDetected} />
-      <ScreenshotAPIMonitor isActive={isActive} onViolationDetected={onViolationDetected} />
-    </>
-  );
 };
 
 // --- SP1 MODAL ---
@@ -802,11 +547,6 @@ const UTBKStudentApp = () => {
   // --- TOKEN LOGIN ---
   const handleTokenLogin = async () => {
     if (!inputToken.trim()) { alert('Masukkan Kode Token!'); return; }
-    
-    // ===== TAMBAHAN: RECAPTCHA VERIFICATION =====
-    executeRecaptcha('login');
-    // ===== AKHIR TAMBAHAN =====
-    
     const tokenCode = inputToken.trim().toUpperCase().replace(/\s/g, ''); 
     const docRef = doc(db, 'tokens', tokenCode);
     
@@ -987,12 +727,8 @@ const UTBKStudentApp = () => {
         className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
+        {/* ===== PASS isIOS ke Security Monitor ===== */}
         <AdvancedSecurityMonitor 
-            isActive={securityActive && !sp1Data} 
-            onViolationDetected={handleViolationLogic}
-            isIOSDevice={isIOS}
-        />
-        <EnhancedSecurityMonitor 
             isActive={securityActive && !sp1Data} 
             onViolationDetected={handleViolationLogic}
             isIOSDevice={isIOS}
@@ -1004,6 +740,7 @@ const UTBKStudentApp = () => {
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
         <p className="text-indigo-200 text-sm max-w-md text-center px-4">Dilarang keluar fullscreen / pindah tab.</p>
         
+        {/* ===== iOS INFO BADGE ===== */}
         {isIOS && (
           <div className="mt-4 bg-blue-900/50 border-2 border-blue-400 rounded-xl p-3 max-w-md mx-4">
             <p className="text-blue-200 text-xs font-bold flex items-center gap-2 justify-center">
@@ -1033,6 +770,7 @@ const UTBKStudentApp = () => {
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           
+          {/* ===== iOS WARNING BANNER ===== */}
           {isIOS && (
             <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-3 mb-4 text-left text-xs text-blue-800">
               <div className="font-bold flex items-center gap-2 mb-1 text-blue-900">
@@ -1069,12 +807,8 @@ const UTBKStudentApp = () => {
         className="min-h-screen w-full bg-gradient-to-br from-indigo-50 to-white flex flex-col items-center justify-center p-4 select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
+        {/* ===== PASS isIOS ke Security Monitor ===== */}
         <AdvancedSecurityMonitor 
-            isActive={securityActive && !sp1Data} 
-            onViolationDetected={handleViolationLogic}
-            isIOSDevice={isIOS}
-        />
-        <EnhancedSecurityMonitor 
             isActive={securityActive && !sp1Data} 
             onViolationDetected={handleViolationLogic}
             isIOSDevice={isIOS}
@@ -1172,12 +906,8 @@ const UTBKStudentApp = () => {
   return (
     <div className="min-h-screen w-full bg-gray-50 select-none pb-10" style={{ userSelect: 'none', WebkitUserSelect: 'none' }} onContextMenu={(e) => e.preventDefault()}>
       
+      {/* ===== PASS isIOS ke Security Monitor ===== */}
       <AdvancedSecurityMonitor 
-        isActive={securityActive && !sp1Data} 
-        onViolationDetected={handleViolationLogic}
-        isIOSDevice={isIOS}
-      />
-      <EnhancedSecurityMonitor 
         isActive={securityActive && !sp1Data} 
         onViolationDetected={handleViolationLogic}
         isIOSDevice={isIOS}
