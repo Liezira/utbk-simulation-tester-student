@@ -1146,7 +1146,6 @@ const UTBKStudentApp = () => {
                   </div>
                 )}
               </div>
-
               <div className="mb-8">
                   {qType === 'isian' ? (
                       <div className="bg-gray-50 p-6 rounded-lg border-2 border-dashed border-gray-300">
