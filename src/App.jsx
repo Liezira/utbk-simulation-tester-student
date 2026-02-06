@@ -6,7 +6,6 @@ import { getApp } from 'firebase/app';
 import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
 import 'katex/dist/katex.min.css';
 import Latex from 'react-latex-next';
-import { GoogleReCaptchaProvider } from 'react-google-recaptcha-v3';
 
 // --- CONFIGURATION ---
 const SUBTEST_GROUPS = {
