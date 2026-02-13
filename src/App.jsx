@@ -198,6 +198,7 @@ const UTBKStudentApp = () => {
   const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
 
   const timerRef = useRef(null);
+  const saveTimeoutRef = useRef(null); // ✅ FIX: Tambah ref untuk debounce
 
   // --- 1. CORE VIOLATION LOGIC (CENTRALIZED) ---
   const handleViolationLogic = async (type, message) => {
@@ -270,6 +271,7 @@ const UTBKStudentApp = () => {
   };
 
   // --- SESSION RESTORE ---
+  // ✅ FIX: Perbaiki logic restore session
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -283,10 +285,13 @@ const UTBKStudentApp = () => {
                     const now = Date.now();
                     const sixtyDays = 60 * 24 * 60 * 60 * 1000;
                     
+                    // ✅ FIX: Case 1 - Ujian sudah selesai (status = 'used')
                     if (data.status === 'used' && data.score !== undefined) {
                         if ((now - createdTime) > sixtyDays) {
                             localStorage.removeItem('utbk_student_token');
                             localStorage.removeItem(`answers_${savedToken}`);
+                            localStorage.removeItem(`questionOrder_${savedToken}`); // ✅ FIX: Cleanup
+                            localStorage.removeItem(`testOrder_${savedToken}`); // ✅ FIX: Cleanup
                         } else {
                             setStudentName(data.studentName);
                             setCurrentTokenCode(savedToken);
@@ -295,9 +300,54 @@ const UTBKStudentApp = () => {
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
                         }
-                    } else {
-                         localStorage.removeItem('utbk_student_token');
+                        return; // ✅ FIX: Return agar tidak lanjut ke case berikutnya
                     }
+                    
+                    // ✅ FIX: Case 2 - Ujian sedang berjalan (ada historyQuestions tapi belum selesai)
+                    if (data.historyQuestions && Object.keys(data.historyQuestions).length > 0 && !data.score) {
+                        console.log('🔄 Restoring ongoing exam session...');
+                        
+                        setStudentName(data.studentName);
+                        setCurrentTokenCode(savedToken);
+                        
+                        // Restore questionOrder dari Firebase
+                        setQuestionOrder(data.historyQuestions);
+                        localStorage.setItem(`questionOrder_${savedToken}`, JSON.stringify(data.historyQuestions));
+                        
+                        // Restore answers
+                        setAnswers(data.answers || {});
+                        
+                        // Restore testOrder
+                        if (data.testOrder) {
+                            const restoredTestOrder = data.testOrder.map(id => 
+                                SUBTESTS.find(s => s.id === id)
+                            ).filter(Boolean);
+                            setTestOrder(restoredTestOrder);
+                            localStorage.setItem(`testOrder_${savedToken}`, JSON.stringify(restoredTestOrder));
+                        } else {
+                            const localTestOrder = localStorage.getItem(`testOrder_${savedToken}`);
+                            if (localTestOrder) {
+                                setTestOrder(JSON.parse(localTestOrder));
+                            } else {
+                                setTestOrder(SUBTESTS);
+                            }
+                        }
+                        
+                        // Restore progress
+                        if (data.currentProgress) {
+                            setCurrentSubtestIndex(data.currentProgress.subtestIndex || 0);
+                            setCurrentQuestion(data.currentProgress.questionIndex || 0);
+                        }
+                        
+                        setSecurityActive(true);
+                        setGlobalStartTime(data.startedAt ? new Date(data.startedAt).getTime() : Date.now());
+                        setCountdownTime(3);
+                        setScreen('countdown');
+                        return; // ✅ FIX: Return agar tidak lanjut
+                    }
+                    
+                    // ✅ FIX: Case 3 - Token belum dipakai sama sekali
+                    localStorage.removeItem('utbk_student_token');
                 }
             } catch (error) { console.error(error); }
         }
@@ -505,7 +555,10 @@ const UTBKStudentApp = () => {
                     answers: answers,
                     historyQuestions: questionOrder 
                 });
+                // ✅ FIX: Cleanup localStorage setelah ujian selesai
                 localStorage.removeItem(`answers_${currentTokenCode}`);
+                localStorage.removeItem(`questionOrder_${currentTokenCode}`);
+                localStorage.removeItem(`testOrder_${currentTokenCode}`);
                 
                 const q = query(collection(db, 'tokens'), where('score', '!=', null), orderBy('score', 'desc'), limit(10));
                 const querySnapshot = await getDocs(q);
@@ -593,6 +646,7 @@ const UTBKStudentApp = () => {
   };
 
   // --- START TEST ---
+  // ✅ FIX: Cek questionOrder tersimpan sebelum mengacak ulang
   const startTest = (bypass = false) => {
     if (!bypass) return;
     if (!globalStartTime) setGlobalStartTime(Date.now()); 
@@ -601,14 +655,45 @@ const UTBKStudentApp = () => {
       if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } 
     }
     
-    const shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
-    setTestOrder(shuffledSubtests);
+    // ✅ FIX: Cek apakah sudah ada questionOrder tersimpan
+    const savedQuestionOrderLocal = localStorage.getItem(`questionOrder_${currentTokenCode}`);
+    const savedTestOrderLocal = localStorage.getItem(`testOrder_${currentTokenCode}`);
     
-    const qOrder = {};
-    shuffledSubtests.forEach((subtest) => {
-      const bank = [...(bankSoal[subtest.id] || [])];
-      qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
-    });
+    let shuffledSubtests;
+    let qOrder;
+    
+    if (savedQuestionOrderLocal && savedTestOrderLocal) {
+        // ✅ FIX: RESTORE - Gunakan urutan yang sudah ada
+        console.log('📌 Restoring saved question order from localStorage');
+        qOrder = JSON.parse(savedQuestionOrderLocal);
+        shuffledSubtests = JSON.parse(savedTestOrderLocal);
+    } else {
+        // ✅ FIX: NEW - Acak baru dan simpan
+        console.log('🎲 Creating new randomized question order');
+        shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
+        
+        qOrder = {};
+        shuffledSubtests.forEach((subtest) => {
+          const bank = [...(bankSoal[subtest.id] || [])];
+          qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
+        });
+        
+        // ✅ FIX: Simpan ke localStorage
+        localStorage.setItem(`questionOrder_${currentTokenCode}`, JSON.stringify(qOrder));
+        localStorage.setItem(`testOrder_${currentTokenCode}`, JSON.stringify(shuffledSubtests));
+        
+        // ✅ FIX: Backup ke Firebase (async)
+        if (currentTokenCode) {
+            const tokenRef = doc(db, 'tokens', currentTokenCode);
+            updateDoc(tokenRef, { 
+                historyQuestions: qOrder,
+                testOrder: shuffledSubtests.map(s => s.id),
+                startedAt: new Date().toISOString()
+            }).catch(e => console.error("⚠️ Firebase backup error:", e));
+        }
+    }
+    
+    setTestOrder(shuffledSubtests);
     setQuestionOrder(qOrder);
     
     setCurrentSubtestIndex(0); 
@@ -670,6 +755,7 @@ const UTBKStudentApp = () => {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
   
+  // ✅ FIX: Tambahkan debounce untuk Firebase save
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
       setAnswers(prev => {
@@ -680,7 +766,32 @@ const UTBKStudentApp = () => {
               else current.push(val);
               newAnswers[k] = current;
           } else { newAnswers[k] = val; }
+          
+          // ✅ Save ke localStorage (instant)
           localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
+          
+          // ✅ FIX: Debounced save ke Firebase
+          if (currentTokenCode) {
+              // Clear timeout sebelumnya
+              if (saveTimeoutRef.current) {
+                  clearTimeout(saveTimeoutRef.current);
+              }
+              
+              // Set timeout baru (save setelah 2 detik tidak ada aktivitas)
+              saveTimeoutRef.current = setTimeout(() => {
+                  const tokenRef = doc(db, 'tokens', currentTokenCode);
+                  updateDoc(tokenRef, { 
+                      answers: newAnswers,
+                      historyQuestions: questionOrder,
+                      lastAnsweredAt: new Date().toISOString(),
+                      currentProgress: {
+                          subtestIndex: currentSubtestIndex,
+                          questionIndex: currentQuestion
+                      }
+                  }).catch(e => console.error("⚠️ Firebase backup error:", e));
+              }, 2000);
+          }
+          
           return newAnswers;
       });
   };
