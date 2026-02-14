@@ -28,7 +28,8 @@ const SECURITY_CONFIG = {
   PASTE_BLOCKED: true, 
   COPY_BLOCKED: true, 
   DEVTOOLS_BLOCKED: true, 
-  RIGHT_CLICK_BLOCKED: true, 
+  RIGHT_CLICK_BLOCKED: true,
+  FULLSCREEN_EXIT_GRACE_PERIOD: 2000, // 2 detik grace period untuk prevent accidental gesture
 };
 
 // --- HELPER FUNCTIONS ---
@@ -44,10 +45,68 @@ const getWeight = (difficultyLevel) => {
     switch (difficultyLevel) { case 3: return 2.0; case 2: return 1.5; default: return 1.0; }
 };
 
-// --- ADVANCED SECURITY MONITOR (ANTI-SPLIT SCREEN V2 + iOS FIX) ---
+// --- 🆕 WAKE LOCK MANAGER (SCREEN ANTI-SLEEP) ---
+const useWakeLock = (isActive) => {
+  const wakeLockRef = useRef(null);
+
+  useEffect(() => {
+    if (!isActive) {
+      // Release wake lock ketika tidak aktif
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().then(() => {
+          console.log('🔓 Wake Lock released');
+          wakeLockRef.current = null;
+        }).catch(err => console.warn('Wake Lock release error:', err));
+      }
+      return;
+    }
+
+    // Request wake lock
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen');
+          console.log('🔒 Wake Lock activated - Screen will stay on');
+
+          // Re-acquire wake lock jika visibility change
+          wakeLockRef.current.addEventListener('release', () => {
+            console.log('Wake Lock released by system');
+          });
+        } else {
+          console.warn('⚠️ Wake Lock API not supported on this browser');
+        }
+      } catch (err) {
+        console.warn('Wake Lock request failed:', err);
+      }
+    };
+
+    requestWakeLock();
+
+    // Re-acquire on visibility change (tab becomes visible again)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isActive && !wakeLockRef.current) {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLockRef.current) {
+        wakeLockRef.current.release().then(() => {
+          wakeLockRef.current = null;
+        }).catch(err => console.warn('Cleanup wake lock error:', err));
+      }
+    };
+  }, [isActive]);
+};
+
+// --- ADVANCED SECURITY MONITOR (ANTI-SPLIT SCREEN V2 + iOS FIX + FULLSCREEN EXIT DETECTION) ---
 const AdvancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice }) => {
   const lastActivityRef = useRef(Date.now());
   const checkIntervalRef = useRef(null);
+  const fullscreenExitTimerRef = useRef(null); // 🆕 Grace period timer
 
   useEffect(() => {
     if (!isActive) return;
@@ -113,7 +172,40 @@ const AdvancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice })
     // Jalankan pemeriksaan setiap 500ms (Cepat menangkap floating window)
     checkIntervalRef.current = setInterval(checkScreenIntegrity, 500);
 
-    // 3. EVENT LISTENERS TAMBAHAN
+    // 3. 🆕 FULLSCREEN EXIT DETECTION (DENGAN GRACE PERIOD)
+    const handleFullscreenChange = () => {
+      // Skip di iOS (tidak support fullscreen API)
+      if (isIOSDevice) return;
+
+      // Jika keluar dari fullscreen
+      if (!document.fullscreenElement) {
+        console.warn('⚠️ Fullscreen exit detected - Starting grace period...');
+        
+        // Clear timer sebelumnya jika ada
+        if (fullscreenExitTimerRef.current) {
+          clearTimeout(fullscreenExitTimerRef.current);
+        }
+
+        // Set grace period (2 detik untuk prevent accidental gesture)
+        fullscreenExitTimerRef.current = setTimeout(() => {
+          // Cek lagi setelah grace period
+          if (!document.fullscreenElement) {
+            onViolationDetected('fullscreen_exit', '🚫 Keluar dari Fullscreen Mode!');
+          }
+        }, SECURITY_CONFIG.FULLSCREEN_EXIT_GRACE_PERIOD);
+      } else {
+        // Jika kembali ke fullscreen dalam grace period, batalkan violation
+        if (fullscreenExitTimerRef.current) {
+          console.log('✅ Back to fullscreen within grace period - Violation cancelled');
+          clearTimeout(fullscreenExitTimerRef.current);
+          fullscreenExitTimerRef.current = null;
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+    // 4. EVENT LISTENERS TAMBAHAN
     const handleBlur = () => onViolationDetected('blur', '⚠️ Fokus Hilang (Split/Minimize)!');
     const handleCopy = (e) => { e.preventDefault(); onViolationDetected('copy', '🚫 Copy Blocked'); };
     const handlePaste = (e) => { e.preventDefault(); onViolationDetected('paste', '🚫 Paste Blocked'); };
@@ -126,6 +218,10 @@ const AdvancedSecurityMonitor = ({ isActive, onViolationDetected, isIOSDevice })
 
     return () => {
       clearInterval(checkIntervalRef.current);
+      if (fullscreenExitTimerRef.current) {
+        clearTimeout(fullscreenExitTimerRef.current);
+      }
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
       window.removeEventListener('blur', handleBlur);
       document.removeEventListener('copy', handleCopy);
       document.removeEventListener('paste', handlePaste);
@@ -198,7 +294,10 @@ const UTBKStudentApp = () => {
   const [isLandscapeMobile, setIsLandscapeMobile] = useState(false);
 
   const timerRef = useRef(null);
-  const saveTimeoutRef = useRef(null); // ✅ FIX: Tambah ref untuk debounce
+  const saveTimeoutRef = useRef(null);
+
+  // 🆕 ACTIVATE WAKE LOCK (Screen anti-sleep)
+  useWakeLock(securityActive);
 
   // --- 1. CORE VIOLATION LOGIC (CENTRALIZED) ---
   const handleViolationLogic = async (type, message) => {
@@ -271,7 +370,6 @@ const UTBKStudentApp = () => {
   };
 
   // --- SESSION RESTORE ---
-  // ✅ FIX: Perbaiki logic restore session
   useEffect(() => {
     const restoreSession = async () => {
         const savedToken = localStorage.getItem('utbk_student_token');
@@ -285,13 +383,13 @@ const UTBKStudentApp = () => {
                     const now = Date.now();
                     const sixtyDays = 60 * 24 * 60 * 60 * 1000;
                     
-                    // ✅ FIX: Case 1 - Ujian sudah selesai (status = 'used')
+                    // Case 1 - Ujian sudah selesai (status = 'used')
                     if (data.status === 'used' && data.score !== undefined) {
                         if ((now - createdTime) > sixtyDays) {
                             localStorage.removeItem('utbk_student_token');
                             localStorage.removeItem(`answers_${savedToken}`);
-                            localStorage.removeItem(`questionOrder_${savedToken}`); // ✅ FIX: Cleanup
-                            localStorage.removeItem(`testOrder_${savedToken}`); // ✅ FIX: Cleanup
+                            localStorage.removeItem(`questionOrder_${savedToken}`);
+                            localStorage.removeItem(`testOrder_${savedToken}`);
                         } else {
                             setStudentName(data.studentName);
                             setCurrentTokenCode(savedToken);
@@ -300,10 +398,10 @@ const UTBKStudentApp = () => {
                             if (testOrder.length === 0) setTestOrder(SUBTESTS); 
                             setScreen('result');
                         }
-                        return; // ✅ FIX: Return agar tidak lanjut ke case berikutnya
+                        return;
                     }
                     
-                    // ✅ FIX: Case 2 - Ujian sedang berjalan (ada historyQuestions tapi belum selesai)
+                    // Case 2 - Ujian sedang berjalan (ada historyQuestions tapi belum selesai)
                     if (data.historyQuestions && Object.keys(data.historyQuestions).length > 0 && !data.score) {
                         console.log('🔄 Restoring ongoing exam session...');
                         
@@ -343,10 +441,10 @@ const UTBKStudentApp = () => {
                         setGlobalStartTime(data.startedAt ? new Date(data.startedAt).getTime() : Date.now());
                         setCountdownTime(3);
                         setScreen('countdown');
-                        return; // ✅ FIX: Return agar tidak lanjut
+                        return;
                     }
                     
-                    // ✅ FIX: Case 3 - Token belum dipakai sama sekali
+                    // Case 3 - Token belum dipakai sama sekali
                     localStorage.removeItem('utbk_student_token');
                 }
             } catch (error) { console.error(error); }
@@ -555,7 +653,6 @@ const UTBKStudentApp = () => {
                     answers: answers,
                     historyQuestions: questionOrder 
                 });
-                // ✅ FIX: Cleanup localStorage setelah ujian selesai
                 localStorage.removeItem(`answers_${currentTokenCode}`);
                 localStorage.removeItem(`questionOrder_${currentTokenCode}`);
                 localStorage.removeItem(`testOrder_${currentTokenCode}`);
@@ -646,7 +743,6 @@ const UTBKStudentApp = () => {
   };
 
   // --- START TEST ---
-  // ✅ FIX: Cek questionOrder tersimpan sebelum mengacak ulang
   const startTest = (bypass = false) => {
     if (!bypass) return;
     if (!globalStartTime) setGlobalStartTime(Date.now()); 
@@ -655,7 +751,6 @@ const UTBKStudentApp = () => {
       if ((bankSoal[s.id]?.length || 0) < s.questions) { alert(`Soal ${s.name} belum siap.`); return; } 
     }
     
-    // ✅ FIX: Cek apakah sudah ada questionOrder tersimpan
     const savedQuestionOrderLocal = localStorage.getItem(`questionOrder_${currentTokenCode}`);
     const savedTestOrderLocal = localStorage.getItem(`testOrder_${currentTokenCode}`);
     
@@ -663,12 +758,10 @@ const UTBKStudentApp = () => {
     let qOrder;
     
     if (savedQuestionOrderLocal && savedTestOrderLocal) {
-        // ✅ FIX: RESTORE - Gunakan urutan yang sudah ada
         console.log('📌 Restoring saved question order from localStorage');
         qOrder = JSON.parse(savedQuestionOrderLocal);
         shuffledSubtests = JSON.parse(savedTestOrderLocal);
     } else {
-        // ✅ FIX: NEW - Acak baru dan simpan
         console.log('🎲 Creating new randomized question order');
         shuffledSubtests = [...SUBTESTS].sort(() => Math.random() - 0.5);
         
@@ -678,11 +771,9 @@ const UTBKStudentApp = () => {
           qOrder[subtest.id] = bank.sort(() => Math.random() - 0.5).slice(0, subtest.questions);
         });
         
-        // ✅ FIX: Simpan ke localStorage
         localStorage.setItem(`questionOrder_${currentTokenCode}`, JSON.stringify(qOrder));
         localStorage.setItem(`testOrder_${currentTokenCode}`, JSON.stringify(shuffledSubtests));
         
-        // ✅ FIX: Backup ke Firebase (async)
         if (currentTokenCode) {
             const tokenRef = doc(db, 'tokens', currentTokenCode);
             updateDoc(tokenRef, { 
@@ -755,7 +846,6 @@ const UTBKStudentApp = () => {
 
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }); }, [currentQuestion, currentSubtestIndex, screen]);
   
-  // ✅ FIX: Tambahkan debounce untuk Firebase save
   const handleAnswer = (val, type) => { 
       const k = `${testOrder[currentSubtestIndex].id}_${currentQuestion}`;
       setAnswers(prev => {
@@ -767,17 +857,13 @@ const UTBKStudentApp = () => {
               newAnswers[k] = current;
           } else { newAnswers[k] = val; }
           
-          // ✅ Save ke localStorage (instant)
           localStorage.setItem(`answers_${currentTokenCode}`, JSON.stringify(newAnswers));
           
-          // ✅ FIX: Debounced save ke Firebase
           if (currentTokenCode) {
-              // Clear timeout sebelumnya
               if (saveTimeoutRef.current) {
                   clearTimeout(saveTimeoutRef.current);
               }
               
-              // Set timeout baru (save setelah 2 detik tidak ada aktivitas)
               saveTimeoutRef.current = setTimeout(() => {
                   const tokenRef = doc(db, 'tokens', currentTokenCode);
                   updateDoc(tokenRef, { 
@@ -838,7 +924,6 @@ const UTBKStudentApp = () => {
         className="min-h-screen bg-indigo-900 flex flex-col items-center justify-center text-white select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
-        {/* ===== PASS isIOS ke Security Monitor ===== */}
         <AdvancedSecurityMonitor 
             isActive={securityActive && !sp1Data} 
             onViolationDetected={handleViolationLogic}
@@ -851,7 +936,6 @@ const UTBKStudentApp = () => {
         <div className="text-[120px] font-bold leading-none mb-4 text-yellow-400 font-mono">{countdownTime}</div>
         <p className="text-indigo-200 text-sm max-w-md text-center px-4">Dilarang keluar fullscreen / pindah tab.</p>
         
-        {/* ===== iOS INFO BADGE ===== */}
         {isIOS && (
           <div className="mt-4 bg-blue-900/50 border-2 border-blue-400 rounded-xl p-3 max-w-md mx-4">
             <p className="text-blue-200 text-xs font-bold flex items-center gap-2 justify-center">
@@ -864,8 +948,10 @@ const UTBKStudentApp = () => {
         <div className="mt-8 bg-red-900/50 border-2 border-red-400 rounded-xl p-4 max-w-md mx-4">
           <p className="text-red-200 text-xs font-bold flex items-center gap-2 mb-2"><Shield size={16}/> SISTEM KEAMANAN AKTIF</p>
           <ul className="text-red-100 text-xs space-y-1 text-left">
-            <li>• Pelanggaran 1: SP1</li>
-            <li>• Pelanggaran 2: <b>DISKUALIFIKASI</b></li>
+            <li>• 🔒 Wake Lock: Screen tidak akan sleep</li>
+            <li>• 🚫 Fullscreen Exit: Auto-detect (2s grace period)</li>
+            <li>• ⚠️ Pelanggaran 1: SP1</li>
+            <li>• ❌ Pelanggaran 2: <b>DISKUALIFIKASI</b></li>
           </ul>
         </div>
       </div>
@@ -881,7 +967,6 @@ const UTBKStudentApp = () => {
           <h1 className="text-2xl font-bold text-indigo-900 mb-1">Sistem Simulasi Test UTBK SNBT</h1>
           <p className="text-gray-500 mb-6 text-sm">Platform Ujian Berbasis Token Online</p>
           
-          {/* ===== iOS WARNING BANNER ===== */}
           {isIOS && (
             <div className="bg-blue-50 border-2 border-blue-300 rounded-lg p-3 mb-4 text-left text-xs text-blue-800">
               <div className="font-bold flex items-center gap-2 mb-1 text-blue-900">
@@ -894,6 +979,8 @@ const UTBKStudentApp = () => {
           <div className="bg-red-50 border-2 border-red-300 rounded-lg p-4 mb-4 text-left text-xs text-red-800">
             <div className="font-bold flex items-center gap-2 mb-2 text-red-900"><ShieldAlert size={18}/> ANTI-CHEAT STRICT:</div>
             <ul className="list-disc pl-4 space-y-1 font-semibold">
+              <li>✓ Wake Lock - Screen tidak sleep</li>
+              <li>✓ Fullscreen Exit Detection (2s grace)</li>
               <li>✓ Deteksi Screenshot & Layar</li>
               <li>✓ Blokir DevTools & Copy-Paste</li>
               <li>✓ Blokir Pindah Tab / Split Screen</li>
@@ -918,7 +1005,6 @@ const UTBKStudentApp = () => {
         className="min-h-screen w-full bg-gradient-to-br from-indigo-50 to-white flex flex-col items-center justify-center p-4 select-none"
         onContextMenu={(e) => e.preventDefault()}
       >
-        {/* ===== PASS isIOS ke Security Monitor ===== */}
         <AdvancedSecurityMonitor 
             isActive={securityActive && !sp1Data} 
             onViolationDetected={handleViolationLogic}
@@ -1017,7 +1103,6 @@ const UTBKStudentApp = () => {
   return (
     <div className="min-h-screen w-full bg-gray-50 select-none pb-10" style={{ userSelect: 'none', WebkitUserSelect: 'none' }} onContextMenu={(e) => e.preventDefault()}>
       
-      {/* ===== PASS isIOS ke Security Monitor ===== */}
       <AdvancedSecurityMonitor 
         isActive={securityActive && !sp1Data} 
         onViolationDetected={handleViolationLogic}
