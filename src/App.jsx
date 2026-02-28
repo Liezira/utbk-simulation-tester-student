@@ -1096,9 +1096,9 @@ const UTBKStudentApp = () => {
             <ul className="list-disc pl-4 space-y-1 font-semibold">
               <li>✓ Wake Lock — layar tidak sleep</li>
               <li>✓ Grace period untuk pelanggaran tidak sengaja</li>
-              <li>✓ Pelanggaran = pengurangan poin (win-win)</li>
+              <li>✓ Pelanggaran = pengurangan poin</li>
               <li>✓ Blokir DevTools, Copy-Paste, Split Screen</li>
-              <li className="text-indigo-700">☕ Fitur Pause tersedia ({PAUSE_CONFIG.MAX_PAUSE_COUNT}x per subtes, maks {PAUSE_CONFIG.MAX_PAUSE_DURATION/60} menit)</li>
+              <li className="text-indigo-700">Fitur Pause tersedia ({PAUSE_CONFIG.MAX_PAUSE_COUNT}x per subtes, maks {PAUSE_CONFIG.MAX_PAUSE_DURATION/60} menit)</li>
               <li className="text-red-600 font-black">⚠️ Akumulasi ≥ {VIOLATION_SCORING.maxTotalDeduction} poin = Submit Otomatis</li>
             </ul>
           </div>
