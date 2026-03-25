@@ -789,7 +789,8 @@ const UTBKStudentApp = () => {
             status: 'used', score: totalScore, scoreDetails: details,
             finalTimeLeft: globalTimeLeftSeconds, finishedAt: new Date().toISOString(),
             violation: violationReason || null, answers, historyQuestions: questionOrder,
-            violationScore, // ✅ BARU: Simpan violation score final
+            violationScore,       // Simpan total poin pelanggaran
+            violationCounts,      // FIX Bug 4: Simpan breakdown per tipe pelanggaran
           });
           ['answers_', 'questionOrder_', 'testOrder_'].forEach(prefix => 
             localStorage.removeItem(`${prefix}${currentTokenCode}`)
@@ -806,7 +807,16 @@ const UTBKStudentApp = () => {
           });
           setLeaderboard(top10);
           setMyRank(userRank);
-        } catch (error) { console.error("Save Error:", error); }
+        } catch (error) {
+          console.error("Save Error:", error);
+          // FIX UX 3: Beri tahu siswa secara eksplisit bahwa skor gagal tersimpan
+          // agar mereka bisa menghubungi admin sebelum menutup tab.
+          alert(
+            "⚠️ PERHATIAN: Ujian selesai tapi skor gagal tersimpan ke server.\n\n" +
+            "Jangan tutup halaman ini! Catat kode token kamu dan hubungi admin segera.\n\n" +
+            `Error: ${error.message}`
+          );
+        }
       };
       
       if (globalStartTime) finishExamProcess();
@@ -854,7 +864,9 @@ const UTBKStudentApp = () => {
         return;
       }
 
-      if ((now - createdTime) > 24 * 60 * 60 * 1000) { alert('Token Expired (>24 Jam).'); return; }
+      // FIX UX 4: Pengecekan expired token harus dilakukan di sini, SEBELUM user diizinkan
+      // memulai ujian. Sebelumnya pengecekan ini tidak ada untuk token status 'active'.
+      if ((now - createdTime) > 24 * 60 * 60 * 1000) { alert('Token Expired (>24 Jam). Hubungi admin untuk mendapatkan token baru.'); return; }
 
       if (confirm(`Login sebagai ${data.studentName}?`)) {
         await updateDoc(doc(db, 'tokens', tokenCode), { loginAt: new Date().toISOString() }); 
