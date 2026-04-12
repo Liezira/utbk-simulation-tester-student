@@ -166,7 +166,76 @@ const RichTextToolbar = ({ inputRef, value, onChange }) => {
         </button>
       ))}
       <div className="w-px h-4 bg-gray-300 mx-1" />
-      <span className="text-[10px] text-gray-400 italic">Pilih teks → format</span>
+      <span className="text-[10px] text-gray-400 italic">Pilih teks → format | bold: **text** | pangkat: ^(n) | bawah: _(n)</span>
+    </div>
+  );
+};
+
+// ✅ FIX: Markdown → HTML converter (bold, italic, underline, strike, super, sub)
+const markdownToHtml = (str) => {
+  if (!str) return '';
+  let s = str;
+  // Order matters: subscript/superscript with () FIRST (avoid clash with italic _)
+  s = s.replace(/_\(([^)]*)\)/g,   '<sub>$1</sub>');
+  s = s.replace(/\^\(([^)]*)\)/g,  '<sup>$1</sup>');
+  // Bold: **text**
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Strikethrough: ~~text~~
+  s = s.replace(/~~([^~]+)~~/g,    '<s>$1</s>');
+  // Underline HTML pass-through: <u>text</u>
+  s = s.replace(/<u>([\s\S]*?)<\/u>/g, '<u>$1</u>');
+  // Italic: _text_ (NOT subscript _(...) which is already consumed above)
+  s = s.replace(/_([^_\n(][^_\n]*)_/g, '<em>$1</em>');
+  return s;
+};
+
+// ✅ FIX: Hybrid renderer — markdown outside $...$ blocks, KaTeX inside $...$
+const MathText = ({ children, className }) => {
+  if (!children) return null;
+  const text = String(children);
+
+  // Split text into LaTeX math segments ($...$ / $$...$$) and plain markdown segments
+  const segments = [];
+  const mathRegex = /(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g;
+  let lastIdx = 0, m;
+
+  while ((m = mathRegex.exec(text)) !== null) {
+    if (m.index > lastIdx) {
+      segments.push({ type: 'md', content: text.slice(lastIdx, m.index) });
+    }
+    segments.push({ type: 'math', content: m[0] });
+    lastIdx = m.index + m[0].length;
+  }
+  if (lastIdx < text.length) {
+    segments.push({ type: 'md', content: text.slice(lastIdx) });
+  }
+
+  return (
+    <span className={className}>
+      {segments.map((seg, i) =>
+        seg.type === 'math'
+          ? <Latex key={i}>{seg.content}</Latex>
+          : <span
+              key={i}
+              style={{ whiteSpace: 'pre-wrap' }}
+              dangerouslySetInnerHTML={{ __html: markdownToHtml(seg.content) }}
+            />
+      )}
+    </span>
+  );
+};
+
+// ✅ FIX: Isian answer live preview component
+const IsianPreview = ({ value }) => {
+  if (!value) return null;
+  return (
+    <div className="mt-2 px-4 pb-3">
+      <p className="text-[10px] font-bold text-indigo-400 uppercase mb-1 flex items-center gap-1">
+        <span>👁</span> Preview:
+      </p>
+      <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-base font-medium text-gray-800 min-h-[36px]">
+        <MathText>{value}</MathText>
+      </div>
     </div>
   );
 };
@@ -1368,8 +1437,8 @@ const UTBKStudentApp = () => {
                     {qType.replace('_', ' ')}
                   </span>
                 </div>
-                <div className="text-lg text-gray-800 leading-loose whitespace-pre-wrap font-medium mb-6 text-left text-justify">
-                  <Latex>{currentQ?.question}</Latex>
+                <div className="text-lg text-gray-800 leading-loose font-medium mb-6 text-left text-justify">
+                  <MathText>{currentQ?.question}</MathText>
                 </div>
                 {currentQ?.image && (
                   <div className="flex justify-center my-6">
@@ -1398,6 +1467,7 @@ const UTBKStudentApp = () => {
                         placeholder="Ketik jawaban kamu di sini..."
                       />
                     </div>
+                    <IsianPreview value={answers[key]} />
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -1410,7 +1480,7 @@ const UTBKStudentApp = () => {
                           <div className={`w-8 h-8 flex items-center justify-center font-bold rounded transition ${isSelected ? 'bg-indigo-600 text-white' : 'bg-indigo-100 text-indigo-700'}`}>
                             {qType === 'pilihan_majemuk' ? (isSelected ? <CheckSquare size={18}/> : <span className="w-4 h-4 border-2 border-indigo-400 rounded-sm"></span>) : l}
                           </div>
-                          <span className="flex-1 font-medium text-gray-700"><Latex>{currentQ?.options[idx] || ''}</Latex></span>
+                          <span className="flex-1 font-medium text-gray-700"><MathText>{currentQ?.options?.[idx] || ''}</MathText></span>
                         </button>
                       );
                     })}
